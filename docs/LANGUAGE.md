@@ -60,8 +60,14 @@ that read it redraw. Properties are separated by newlines or `;`.
 
 Sources only run while their page (or a neighbour) is on screen, and
 identical commands in several widgets run once. Keep commands fast. A command
-can depend on state (`cmd("curl wttr.in/${city}")`) and re-runs with the new
+can depend on state (`cmd("curl wttr.in/${sh(city)}")`) and re-runs with the new
 value at its next interval.
+
+A value goes into a command as `${sh(value)}`, outside any quotes: `sh` puts it in single quotes,
+so bash reads it as one word, whatever it holds. Unquoted, a `'` or `;` in a city name, a file or
+an API's reply would run as code. Numbers from `int`, `round` or `fixed` can go in as they are. The
+store takes no other values in commands, and lists them as `‹value›` for the reviewer
+(`curl wttr.in/‹value›`). `sh` needs `meta { owl: 6 }`.
 
 ## Expressions
 
@@ -79,7 +85,7 @@ value at its next interval.
 | functions | |
 |---|---|
 | numbers | `min max clamp(x, lo, hi) lerp(a, b, t) round(x, digits) floor ceil abs sqrt pow sin cos tan atan2 rad deg sign num(x, default) int` |
-| text | `str len trim upper lower lines words split(s, sep) join(list, sep) replace(s, a, b) contains startsWith endsWith sub(s, from, to) pad(x, width, char) fixed(x, digits)` |
+| text | `str len trim upper lower lines words split(s, sep) join(list, sep) replace(s, a, b) contains startsWith endsWith sub(s, from, to) pad(x, width, char) fixed(x, digits)`, `sh(x)` (one quoted shell word) |
 | format | `fmtBytes(n)` → `1.5G`, `fmtDuration(seconds)` → `2h 5m`, `fmtTime(seconds, "EEE HH:mm")` |
 | parsing | `match(s, regex)` (groups of the first match), `matchAll(s, regex)`, `parseJson(s)` |
 | lists | `range(n)` or `range(a, b, step)`, `map filter find any all count sum avg sort sortBy reverse take drop first last indexOf unique flatten`, `keys values entries get(obj, key, default)` |
@@ -239,6 +245,7 @@ and the default agent opens a pull request there with the GitHub CLI. The store 
 - `meta` with a `description` (10-200 characters), a `version` and a `license`, and ideally a `category`:
   `news`, `dev`, `productivity`, `time`, `world`, `fun`, `home` or `system`
 - every package in `requires`
+- values in commands as `${sh(value)}` (or numbers), so what a command runs is all in the file
 - nothing personal: no tokens, personal paths or hard-coded location
 - a higher `version` for each update
 

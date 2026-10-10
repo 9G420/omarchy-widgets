@@ -1342,6 +1342,11 @@ var BUILTINS = {
     if (f === "") return splitStr(s, "").join(r)
     return s.split(f).join(r)
   }),
+  // owl 6: a value as one shell word, for commands put together while the widget runs.
+  sh: B(1, 1, function(a) {
+    var v = a.get(0)
+    return "'" + (v === null ? "" : text(v)).split("'").join("'\\''") + "'"
+  }),
   startsWith: B(2, 2, function(a) { return a.str(0).indexOf(a.str(1)) === 0 }),
   endsWith: B(2, 2, function(a) {
     var s = a.str(0), e = a.str(1)
@@ -1608,7 +1613,7 @@ var OPERATORS = {
 
 // ---------------------------------------------------------------- compiler
 
-var LEVEL = 5
+var LEVEL = 6
 var MAX_NODES = 500
 var MAX_SCREEN_NODES = 1000
 var MAX_ASSET_BYTES = 2097152
@@ -1661,6 +1666,8 @@ var SINCE = { Terminal: 2, sprite: 3 }
   .forEach(function(k) { SINCE[k] = 4 })
 ;["screen", "close", "screenWidth", "screenHeight", "optional", "linux", "android.system"]
   .forEach(function(k) { SINCE[k] = 5 })
+// owl 6: values in commands, quoted.
+SINCE.sh = 6
 
 var MANAGERS = { pacman: /^[a-z0-9@_+][a-z0-9@._+-]*$/ }
 var HANDLER_PARAMS = { onTap: ["x", "y"], onDrag: ["dx", "dy", "x", "y"], onChange: ["value"], onSubmit: ["value"] }
@@ -2414,6 +2421,7 @@ Compiler.prototype = {
       this.fail(e.name + "(...) is a source: source x = " + e.name + "(\"...\")", e.pos)
     var b = BUILTINS.hasOwnProperty(e.name) ? BUILTINS[e.name] : null
     if (!b) this.fail("unknown function '" + e.name + "'", e.pos)
+    this.since(e.name, e.pos)
     if (e.named.length) this.fail(e.name + " takes no named arguments", e.named[0][1].pos)
     if (e.args.length < b.min || e.args.length > b.max)
       this.fail(e.name + " takes " + (b.min === b.max ? String(b.min) : b.min + "-" + b.max) + " arguments, not " + e.args.length, e.pos)
