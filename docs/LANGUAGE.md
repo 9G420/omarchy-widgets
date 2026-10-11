@@ -135,7 +135,7 @@ Handlers assign state and run actions, separated by `;` or newlines:
 | `app("gtk3-demo")` | starts a graphical Linux app |
 | `run("cmd")` | runs in the background, then refreshes widgets |
 | `url("https://...")` | opens in the Android browser |
-| `launcher("themes")` | `themes`, `agents` or `drawer` |
+| `launcher("themes")` | opens a launcher screen: `themes` (the style screen), `agents`, `store`, `drawer` or `linux` (the sheet that installs Linux); new launchers also take `style` for `themes`, older ones ignore it |
 | `refresh()` | re-runs this widget's sources now |
 
 ## Components
