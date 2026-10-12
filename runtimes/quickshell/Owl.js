@@ -963,7 +963,7 @@ var CONSTANTS = { pi: Math.PI, transparent: new Col(null, 0, 1) }
 var ACTIONS = {
   terminal: [1, 2], app: [1, 1], run: [1, 1], url: [1, 1], launcher: [1, 1], refresh: [0, 1],
   media: [1, 1], androidApp: [1, 1], copy: [1, 1], notify: [1, 2], volume: [1, 1],
-  notification: [2, 2], screen: [0, 0], close: [0, 0]
+  notification: [2, 2], screen: [0, 0], close: [0, 0], torch: [1, 1], share: [1, 1], haptic: [0, 0]
 }
 
 function Args(args, host) {
@@ -1615,7 +1615,7 @@ var OPERATORS = {
 
 // ---------------------------------------------------------------- compiler
 
-var LEVEL = 6
+var LEVEL = 7
 var MAX_NODES = 500
 var MAX_SCREEN_NODES = 1000
 var MAX_ASSET_BYTES = 2097152
@@ -1671,14 +1671,17 @@ var SINCE = { Terminal: 2, sprite: 3 }
 // owl 6: values in commands, quoted, and the launcher's corner style.
 SINCE.sh = 6
 SINCE.corners = 6
+// owl 7: more of the phone: the next alarm, its modes, the torch, the share sheet, haptics.
+;["android.alarm", "android.modes", "torch", "share", "haptic"].forEach(function(k) { SINCE[k] = 7 })
 
 var MANAGERS = { pacman: /^[a-z0-9@_+][a-z0-9@._+-]*$/ }
 var HANDLER_PARAMS = { onTap: ["x", "y"], onDrag: ["dx", "dy", "x", "y"], onChange: ["value"], onSubmit: ["value"] }
 var HANDLER_KINDS = { onChange: ["Slider", "Input"], onSubmit: ["Input"] }
 var TRIGGER_PARAMS = { on: ["value", "old"] }
-var ANDROID = ["battery", "device", "media", "notifications", "volume", "system"]
+var ANDROID = ["battery", "device", "media", "notifications", "volume", "system", "alarm", "modes"]
 var MEDIA = ["toggle", "play", "pause", "next", "previous", "open"]
 var VOLUME = ["up", "down", "mute", "unmute", "toggle"]
+var TORCH = ["on", "off", "toggle"]
 var NOTIFICATION = ["open", "dismiss"]
 var TILE = ["cols", "rows", "tileWidth", "tileHeight", "screenWidth", "screenHeight", "corners"]
 var WIDGET_PROPS = ["size", "minSize", "page", "order", "padding", "background"]
@@ -2263,6 +2266,8 @@ Compiler.prototype = {
       if (c.name === "media" && first !== null && MEDIA.indexOf(first) < 0) self.fail("media takes " + MEDIA.join(", "), c.pos)
       if (c.name === "volume" && first !== null && VOLUME.indexOf(first) < 0 && num(first) === null)
         self.fail("volume takes a level in percent, or " + VOLUME.join(", "), c.pos)
+      if (c.name === "torch" && first !== null && TORCH.indexOf(first) < 0)
+        self.fail("torch takes true, false, " + TORCH.join(", "), c.pos)
       if (c.name === "notification" && first !== null && NOTIFICATION.indexOf(first) < 0)
         self.fail("notification takes " + NOTIFICATION.join(", ") + " and a notification's key", c.pos)
       self.since(c.name, c.pos)
