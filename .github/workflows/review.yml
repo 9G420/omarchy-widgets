@@ -25,11 +25,12 @@ jobs:
       - name: Tools
         run: pacman -Syu --noconfirm --needed git jre-openjdk-headless >/dev/null
 
-      # The base branch: this workflow and tools/owl.jar are the reviewed ones, not
-      # the pull request's. Its files are only read as data, by verify-pr.sh.
+      # The base branch as it is now: this workflow and tools/owl.jar are the reviewed
+      # ones, not the pull request's, and the newest, even for a branch made before
+      # them. The pull request's files are only read as data, by verify-pr.sh.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
+          ref: ${{ github.event.pull_request.base.ref }}
           fetch-depth: 0
           persist-credentials: false
 
