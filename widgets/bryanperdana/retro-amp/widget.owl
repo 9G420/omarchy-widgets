@@ -5,12 +5,12 @@ widget "retro amp" {
   minSize: 4x2
   padding: 0
 
-  meta { owl: 5; description: "A late-90s style music player for whatever is playing on the phone: spectrum, scrolling title, cover and song history, in classic or theme colors."; version: "1.0"; license: "MIT"; category: "fun" }
+  meta { owl: 5; description: "A late-90s style music player for whatever is playing on the phone: spectrum, scrolling title, cover and song history, in classic or theme colors."; version: "1.1"; license: "MIT"; category: "fun" }
 
   // Android's media sessions (YouTube Music, or any other player) and the media volume.
   source m = android.media
   source v = android.volume
-  source now = clock every 1s
+  source now = clock every 1m
 
   // Tap the title bar to switch between the classic skin and the Omarchy theme's colors.
   state skin = "classic" persist
@@ -30,18 +30,10 @@ widget "retro amp" {
   let cInk = classic ? #1c1c28 : foreground
   let cVis = classic ? [#00e800, #e8e800, #e83000] : [accent, foreground]
 
-  // The position is only reported now and then, so count on from the last report.
-  state syncPos = 0
-  state syncAt = 0
-  on m.position { syncPos = value; syncAt = now }
-  on m.playing { syncPos = m.position; syncAt = now }
-  when m.title != null { syncPos = m.position; syncAt = now }
-
   let has = m.available && m.title != null
   let playing = has && m.playing
   let dur = m.duration ?? 0
-  let ran = playing && syncAt > 0 ? syncPos + (now - syncAt) : (m.position ?? 0)
-  let pos = has ? clamp(ran, 0, dur > 0 ? dur : 359999) : 0
+  let pos = has ? clamp(m.position ?? 0, 0, dur > 0 ? dur : 359999) : 0
   let clockText = "${pad(floor(pos / 60), 2, "0")}:${pad(floor(pos) % 60, 2, "0")}"
   let durText = "${floor(dur / 60)}:${pad(floor(dur) % 60, 2, "0")}"
 
@@ -55,7 +47,7 @@ widget "retro amp" {
   state hist = [] persist
   let pushed = m.title == null || first(hist).title == m.title ? hist
     : take(flatten([[{title: m.title, artist: m.artist ?? m.app ?? "", at: now ?? 0}], hist]), 50)
-  every 3s { hist = pushed }
+  on m.title { hist = pushed }
   let coverSize = min((screenWidth ?? 360) - 24, (screenHeight ?? 700) * 0.45)
 
   // A raised key with its symbol; `lit` colors the symbol like the display.
@@ -203,7 +195,7 @@ widget "retro amp" {
         Canvas {
           height: 22
           fill: width
-          let est = len(banner) * 6.9
+          let est = len(banner) * 7.4
           let room = width - 12
           let loop = est + 48
           rect(0, 0, width, height, fill: cHi)
@@ -213,9 +205,9 @@ widget "retro amp" {
             if est <= room {
               text(banner, 6, height / 2, size: 12, color: cLit)
             } else {
-              let x = 6 - (time * 28) % loop
+              let x = playing ? 6 - (time * 28) % loop : 6
               text(banner, x, height / 2, size: 12, color: cLit)
-              text(banner, x + loop, height / 2, size: 12, color: cLit)
+              if playing { text(banner, x + loop, height / 2, size: 12, color: cLit) }
             }
           }
         }
@@ -336,7 +328,7 @@ widget "retro amp" {
             fill: width
             padding: [8, 5]
             background: cur ? alpha(cLit, 0.18) : cLcd
-            onTap: url("https://music.youtube.com/search?q=${replace(replace(replace("${h.artist} ${h.title}", "%", "%25"), "&", "%26"), " ", "+")}")
+            onTap: url("https://music.youtube.com/search?q=${replace(replace(replace(replace(replace("${h.artist} ${h.title}", "%", "%25"), "&", "%26"), "#", "%23"), "+", "%2B"), " ", "+")}")
             Text { text: "${i + 1}."; font: mono; fontSize: 12; color: cur ? cTitle : cLit; width: 26; align: end }
             Text { text: h.artist == "" ? h.title : "${h.artist} - ${h.title}"; fontSize: 13; color: cur ? cTitle : cLit; weight: 1; maxLines: 1 }
             Text { text: fmtTime(h.at, "HH:mm"); font: mono; fontSize: 11; color: cDim; width: 40; align: end }
