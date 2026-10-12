@@ -29,7 +29,10 @@ jobs:
       - name: Changed files
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git diff --name-only "${{ github.event.pull_request.base.sha }}"...HEAD -- widgets > changed.txt
+          # HEAD is the PR merged into today's main, so its first parent is the base.
+          # pull_request.base.sha stays at the main tip from when the PR was opened,
+          # and diffing against it would pick up everything merged since.
+          git diff --name-only HEAD^1 HEAD -- widgets > changed.txt
           cat changed.txt
 
       - name: Only widget files, only in your own folder
@@ -62,7 +65,7 @@ jobs:
 
       - name: Review
         run: |
-          base="${{ github.event.pull_request.base.sha }}"
+          base=$(git rev-parse HEAD^1)
           mkdir -p base
           files=""
           while read -r f; do
