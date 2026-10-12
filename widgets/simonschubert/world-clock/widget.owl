@@ -1,5 +1,5 @@
 widget "world clock" {
-  meta { description: "A row of flip clocks with city nameplates. Tap it to add, rename, reorder or remove cities"; version: "1.3"; license: "MIT"; category: "time"; owl: 5 }
+  meta { description: "A row of flip clocks with city nameplates. Tap it to add, rename, reorder or remove cities"; version: "1.4"; license: "MIT"; category: "time"; owl: 6 }
   size: 6x2
   minSize: 3x2
   requires { pacman: ["tzdata"] }
@@ -18,7 +18,7 @@ widget "world clock" {
   // Zones only ever come from the tz database's own list, and are checked again before they reach the shell.
   let zones = (clocks ?? []).map(c => c.zone).filter(z => match(z, "^[A-Za-z0-9_+/-]+$") != null).unique()
   // Only UTC offsets come from the shell; the digits run off the clock source.
-  source offsets = cmd("echo \"local $(date +%z)\"; for z in ${join(zones, " ")}; do echo \"$z $(TZ=$z date +%z)\"; done") every 5m
+  source offsets = cmd("echo \"local $(date +%z)\"; for z in $(echo ${sh(join(zones, " "))}); do echo \"$z $(TZ=$z date +%z)\"; done") every 5m
   source now = clock every 5s
   // Every place to pick from: "zone<tab>city<tab>country".
   source places = cmd("""

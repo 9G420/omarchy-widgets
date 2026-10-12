@@ -2,7 +2,7 @@ widget "dns" {
   size: 3x1
   minSize: 1x1
 
-  meta { owl: 4; description: "Switch this machine's DNS resolver between Cloudflare, Google, Quad9 and the default in /etc/resolv.conf, showing the active server and its response time."; version: "1.0"; license: "MIT"; category: "system" }
+  meta { owl: 6; description: "Switch this machine's DNS resolver between Cloudflare, Google, Quad9 and the default in /etc/resolv.conf, showing the active server and its response time."; version: "1.1"; license: "MIT"; category: "system" }
 
   requires { pacman: ["bind"] }
 
@@ -20,8 +20,6 @@ widget "dns" {
   let roomy = (rows ?? 2) >= 2
 
   // Back up the original resolv.conf once, then rewrite it per provider.
-  let pre = 'f=/etc/resolv.conf; b=/etc/resolv.conf.omarchy-default; [ -f "$b" ] || cp "$f" "$b"; p='
-  let post = '; case $p in default) [ -f "$b" ] && cp "$b" "$f" ;; cloudflare) s="1.1.1.1 1.0.0.1 2606:4700:4700::1111 2606:4700:4700::1001" ;; google) s="8.8.8.8 8.8.4.4 2001:4860:4860::8888 2001:4860:4860::8844" ;; quad9) s="9.9.9.9 149.112.112.112 2620:fe::fe 2620:fe::9" ;; esac; if [ "$p" != default ]; then { for i in $s; do echo "nameserver $i"; done; echo "options timeout:1 attempts:1"; } > "$f"; fi; true'
 
   component Pill(label, preset, tint, fillmode) {
     let active = provider == preset
@@ -33,7 +31,7 @@ widget "dns" {
       background: active ? tint : surface
       border: active ? 0 : 1
       borderColor: border
-      onTap: run(pre + preset + post)
+      onTap: run('f=/etc/resolv.conf; b=/etc/resolv.conf.omarchy-default; [ -f "$b" ] || cp "$f" "$b"; p=' + sh(preset) + '; case $p in default) [ -f "$b" ] && cp "$b" "$f" ;; cloudflare) s="1.1.1.1 1.0.0.1 2606:4700:4700::1111 2606:4700:4700::1001" ;; google) s="8.8.8.8 8.8.4.4 2001:4860:4860::8888 2001:4860:4860::8844" ;; quad9) s="9.9.9.9 149.112.112.112 2620:fe::fe 2620:fe::9" ;; esac; if [ "$p" != default ]; then { for i in $s; do echo "nameserver $i"; done; echo "options timeout:1 attempts:1"; } > "$f"; fi; true')
     }
   }
 
