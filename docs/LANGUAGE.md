@@ -121,7 +121,7 @@ Every node also takes:
 
 - `width height size` (dp), `fill: true/width/height`, `weight` (share of the
   space left in a Row or Column), `padding` (`8`, `[h, v]` or `[l, t, r, b]`)
-- `background`, `border` (dp), `borderColor`, `radius`, `clip: true`
+- `background`, `border` (dp), `borderColor`, `radius` (dp; `8 * corners` follows the user's corner style), `clip: true`
 - `opacity`, `rotation` (degrees), `scale`, `offset: [x, y]` (dp), `visible`
 - handlers: `onTap` (with `x`, `y`) and `onDrag` (with `dx`, `dy`, `x`, `y`). Long-press
   belongs to the home screen, which uses it to move and resize tiles
@@ -276,5 +276,13 @@ and the message goes to `.errors/`.
 - Use `weight: 1` to fill leftover space and `fill: width` to stretch across.
 - A `Text` without `width`, `weight` or `fill` takes the full width. In a `Row`, give the Texts
   next to a `weight: 1` one a `width`, or the weighted one is squeezed to nothing.
+- `cols`, `rows` (grid cells) and `tileWidth`, `tileHeight` (dp) are the tile's size, to pick a
+  layout that fits. In landscape a tile can be taller than wide.
+- `corners` is the user's corner style as a multiplier, not a radius: 0 (edge, square),
+  0.5 (soft) or 1 (round). Multiply the radius a shape would have on round by it:
+  `radius: 8 * corners` for cards and album art, `3 * corners` for small chips, and the same in
+  Canvas (`rect(x, y, w, h, radius: 8 * corners)`). The tile and bordered Boxes follow it on
+  their own; a fixed `radius`, a clipped Box, an Image or a Canvas shape doesn't. Needs
+  `meta { owl: 6 }`. On the desktop it's always 0, since Omarchy is square.
 - Look at the example widgets in this folder for patterns: `90-analog-clock` (Canvas),
   `91-focus` (state and buttons), `92-aurora` (Shader), `93-latency` (stream).

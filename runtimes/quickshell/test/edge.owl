@@ -30,7 +30,7 @@ widget "edge" {
       rgb(255, 128, 0), rgb(10, 20, 30, 0.5), hsl(200, 0.5, 0.5), hsl(-30, 1, 0.25, 0.2), alpha(accent, 0.5), alpha("#ff0000", 0.25), alpha("red", 2), mix(red, blue, 0.5), mix("#000", "#fff", 0.3), #abc, #11223344, transparent,
       linear(0, 0, 1, 1, [red, "#00ff00", "nope"]), radial(1, 2, 3, [accent, foreground]), spring(), tween(200ms, "linear"), pi, 2s + 1m + 1h + 500ms, 3x2, 0x1F, 1_000,
       txt, num(txt), lines(txt), "${txt}|", "${null}|${1.0}|${[1, null]}", raw, raw.n, -raw.n, raw.b * 2,
-      count, h, p, now, fmtTime(now, "HH:mm"), tileWidth, linux, time, cols
+      count, h, p, now, fmtTime(now, "HH:mm"), tileWidth, linux, time, cols, corners, 8 * corners
     ] {
       Text { text: "${i}: ${e}"; color: i % 2 == 0 ? accent : alpha(red, 0.5) }
     }

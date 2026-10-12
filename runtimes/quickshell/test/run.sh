@@ -5,7 +5,7 @@
 # fixed host and prints every evaluated property and drawing call as JSON;
 # walk.js does the same walk with Owl.js. They must print the same bytes:
 #
-#   edge.owl                196 expressions chosen to break a port
+#   edge.owl                198 expressions chosen to break a port
 #   <widget>.fixture.json   store widgets with the data their sources gave once
 #   every store widget      with no source data at all
 #

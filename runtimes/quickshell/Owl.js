@@ -1666,8 +1666,9 @@ var SINCE = { Terminal: 2, sprite: 3 }
   .forEach(function(k) { SINCE[k] = 4 })
 ;["screen", "close", "screenWidth", "screenHeight", "optional", "linux", "android.system"]
   .forEach(function(k) { SINCE[k] = 5 })
-// owl 6: values in commands, quoted.
+// owl 6: values in commands, quoted, and the launcher's corner style.
 SINCE.sh = 6
+SINCE.corners = 6
 
 var MANAGERS = { pacman: /^[a-z0-9@_+][a-z0-9@._+-]*$/ }
 var HANDLER_PARAMS = { onTap: ["x", "y"], onDrag: ["dx", "dy", "x", "y"], onChange: ["value"], onSubmit: ["value"] }
@@ -1677,7 +1678,7 @@ var ANDROID = ["battery", "device", "media", "notifications", "volume", "system"
 var MEDIA = ["toggle", "play", "pause", "next", "previous", "open"]
 var VOLUME = ["up", "down", "mute", "unmute", "toggle"]
 var NOTIFICATION = ["open", "dismiss"]
-var TILE = ["cols", "rows", "tileWidth", "tileHeight", "screenWidth", "screenHeight"]
+var TILE = ["cols", "rows", "tileWidth", "tileHeight", "screenWidth", "screenHeight", "corners"]
 var WIDGET_PROPS = ["size", "minSize", "page", "order", "padding", "background"]
 
 // An evaluator: `c` is set when the value is known at compile time.
