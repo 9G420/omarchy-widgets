@@ -98,9 +98,53 @@ function numText(x) {
   return m + "E" + (parts[1].charAt(0) === "+" ? parts[1].slice(1) : parts[1])
 }
 
+// Java's Float.toString, for the numbers the jar keeps as floats: always a
+// fraction (3.0), and the fewest digits (two at least) that still read back as
+// the same float, so 28.9f prints 28.9 and not the double it widens to,
+// 28.899999618530273. A tie between two such decimals goes to the even digit,
+// so it rounds the float's exact value; QML has no BigInt, hence the digit array.
 function floatText(x) {
   var f = Math.fround(x)
-  return f === Math.round(f) && Math.abs(f) < 1e7 ? String(f) + ".0" : numText(f)
+  if (f !== f || f === Infinity || f === -Infinity) return numText(f)
+  if (f === 0) return 1 / f < 0 ? "-0.0" : "0.0"
+  var m = Math.abs(f), e = 0
+  while (m !== Math.floor(m)) { m *= 2; e-- }
+  while (m > 16777216 && m % 2 === 0) { m /= 2; e++ }
+  var ds = [], i, carry
+  for (; m > 0; m = Math.floor(m / 10)) ds.push(m % 10)
+  for (var k = 0; k < Math.abs(e); k++) {
+    carry = 0
+    for (i = 0; i < ds.length; i++) {
+      var v = ds[i] * (e < 0 ? 5 : 2) + carry
+      ds[i] = v % 10
+      carry = Math.floor(v / 10)
+    }
+    if (carry) ds.push(carry)
+  }
+  var all = ds.reverse().join("")
+  var exp = all.length - 1 + Math.min(e, 0)
+  for (var p = 2; p <= 9; p++) {
+    var c = all.slice(0, p), rest = all.slice(p)
+    while (c.length < p) c += "0"
+    var r0 = rest.charAt(0)
+    var up = r0 > "5" || r0 === "5" && (/[1-9]/.test(rest.slice(1)) || +c.charAt(p - 1) % 2 === 1)
+    var cexp = exp
+    if (up) {
+      var n = c.split("")
+      for (i = p - 1; i >= 0 && n[i] === "9"; i--) n[i] = "0"
+      if (i < 0) { n.unshift("1"); n.pop(); cexp++ } else n[i] = String(+n[i] + 1)
+      c = n.join("")
+    }
+    if (Math.fround(Number((f < 0 ? "-" : "") + c.charAt(0) + "." + c.slice(1) + "e" + cexp)) === f) break
+  }
+  c = c.replace(/0+$/, "") || "0"
+  var sign = f < 0 ? "-" : ""
+  if (cexp >= -3 && cexp < 7) {
+    if (cexp < 0) return sign + "0." + "000".slice(0, -cexp - 1) + c
+    while (c.length <= cexp + 1) c += "0"
+    return sign + c.slice(0, cexp + 1) + "." + c.slice(cexp + 1)
+  }
+  return sign + c.charAt(0) + "." + (c.slice(1) || "0") + "E" + cexp
 }
 
 function hex8(n) {
