@@ -1,0 +1,311 @@
+widget "news" {
+  meta { description: "Feeds, Hacker News, Lobsters, Reddit and any other feed in one list, with a tab per source"; version: "1.0"; license: "MIT"; category: "news" }
+  size: 6x5
+  minSize: 4x3
+
+  requires { pacman: ["python"] }
+
+  // The tabs come from ~/.config/omarchy-proot/news, one per line (the + in the tab row opens it).
+  // The feed tab reads ~/.config/omarchy-proot/feeds (one URL per line), the same list the feeds widget reads.
+  // Everything is fetched in parallel; what is unreachable or too slow comes back empty. Each feed gives its 4 newest posts.
+  source news = cmd("""
+    d=~/.config/omarchy-proot
+    mkdir -p "$d"
+    [ -f "$d/feeds" ] || { echo https://archlinux.org/feeds/news/; echo https://github.com/omacom/omarchy/releases.atom; } > "$d/feeds"
+    [ -f "$d/news" ] || {
+      echo "# One tab per line, in this order. Every tab also goes into the all tab."
+      echo "#   feeds                     the feeds listed in ~/.config/omarchy-proot/feeds"
+      echo "#   hn                        the Hacker News front page"
+      echo "#   lobsters                  the hottest on Lobsters"
+      echo "#   reddit SUBREDDIT [label]  a subreddit, or several: reddit linux+archlinux (one reddit line only)"
+      echo "#   rss URL [label]           any RSS or Atom feed as a tab of its own"
+      echo feeds; echo hn; echo lobsters
+    } > "$d/news"
+    python3 -c '
+import sys, os, re, json, time, html, urllib.request, xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, wait
+from datetime import datetime
+from email.utils import parsedate_to_datetime
+from urllib.parse import urlsplit, urljoin
+
+A = "{http://www.w3.org/2005/Atom}"
+HN = "https://news.ycombinator.com/item?id="
+DIR = os.path.expanduser("~/.config/omarchy-proot/")
+# Feeds stop reading here, so a slow one still hands over the posts it got before the deadline below.
+STOP = time.monotonic() + 15
+
+def fetch(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "omarchy-proot news widget"})
+    return urllib.request.urlopen(req, timeout=10)
+
+def get(url):
+    with fetch(url) as r:
+        return r.read()
+
+def web(u, base=""):
+    # Only http(s) links reach the launcher: a feed can carry javascript: or any other scheme.
+    u = (u or "").strip()
+    try:
+        u = urljoin(base, u) if u else ""
+    except Exception:
+        return ""
+    return u if u.lower().startswith(("http://", "https://")) else ""
+
+def when(s):
+    try:
+        return int(parsedate_to_datetime(s).timestamp())
+    except Exception:
+        try:
+            return int(datetime.fromisoformat(s.strip().replace("Z", "+00:00")).timestamp())
+        except Exception:
+            return 0
+
+def text(e, *tags):
+    for t in tags:
+        x = e.find(t)
+        if x is not None and x.text:
+            return " ".join(x.text.split())
+    return ""
+
+def post(tab, title, url, at, label, disc="", pts=None, com=None):
+    return {"id": tab["id"] + ":" + (disc or url), "c": tab["c"], "src": tab["src"], "title": title, "url": url,
+            "at": at, "label": label, "disc": disc, "pts": pts, "com": com}
+
+def feed(tab, url, n, named=True):
+    # Reads only as much of a feed as its newest posts need: some feeds are several megabytes.
+    out, name, stack, got = [], "", [], 0
+    parser = ET.XMLPullParser(["start", "end"])
+
+    def add(title, link, at, label=""):
+        # Posts without a link that can be opened are left out.
+        link = web(link, url)
+        if link:
+            out.append(post(tab, html.unescape(title) or link, link, at, label))
+
+    try:
+        with fetch(url) as r:
+            while len(out) < n and got < 400000 and time.monotonic() < STOP:
+                chunk = r.read1(16384)
+                if not chunk:
+                    break
+                got += len(chunk)
+                parser.feed(chunk)
+                for ev, e in parser.read_events():
+                    if ev == "start":
+                        stack.append(e.tag)
+                        continue
+                    stack.pop()
+                    up = stack[-1] if stack else ""
+                    if e.tag in ("title", A + "title") and up in ("channel", A + "feed") and e.text:
+                        name = html.unescape(" ".join(e.text.split()))
+                    elif e.tag == "item":
+                        add(text(e, "title"), text(e, "link"), when(text(e, "pubDate")))
+                    elif e.tag == A + "entry":
+                        link = e.find(A + "link[@rel=\"alternate\"]")
+                        if link is None:
+                            link = e.find(A + "link")
+                        href = link.get("href") if link is not None else ""
+                        cat = e.find(A + "category")
+                        add(text(e, A + "title"), href, when(text(e, A + "published", A + "updated")),
+                            cat.get("label") or "" if cat is not None else "")
+    except Exception:
+        pass
+    name = name or urlsplit(url).netloc
+    return [dict(p, label=name) if named else p for p in out[:n]]
+
+def hn(tab):
+    out = []
+    try:
+        hits = json.loads(get("https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=20"))["hits"]
+        for h in hits:
+            disc = HN + str(h["objectID"])
+            link = web(h.get("url")) or disc
+            site = urlsplit(link).netloc.removeprefix("www.") if link != disc else ""
+            out.append(post(tab, h.get("title") or "", link, h.get("created_at_i") or 0,
+                            site, disc, h.get("points") or 0, h.get("num_comments") or 0))
+    except Exception:
+        pass
+    return out
+
+def lobsters(tab):
+    out = []
+    try:
+        for s in json.loads(get("https://lobste.rs/hottest.json"))[:20]:
+            disc = web(s["comments_url"])
+            link = web(s.get("url")) or disc
+            if link:
+                out.append(post(tab, s["title"], link, when(s["created_at"]), " ".join(s.get("tags") or []),
+                                disc or link, s.get("score") or 0, s.get("comment_count") or 0))
+    except Exception:
+        pass
+    return out
+
+def reddit(tab, subs):
+    # Reddit only answers its feeds without an account (so no points), and one request a minute:
+    # the last answer is kept, and shown again for 10 minutes and whenever Reddit refuses.
+    path = os.path.expanduser("~/.cache/omarchy-proot-news-reddit.json")
+    try:
+        with open(path) as f:
+            old = json.load(f)
+        old = old if old["subs"] == subs else {"at": 0, "posts": []}
+        old["posts"] = [dict(p, c=tab["c"]) for p in old["posts"]]
+    except Exception:
+        old = {"at": 0, "posts": []}
+    if 0 <= time.time() - old["at"] < 600:
+        return old["posts"]
+    got = feed(tab, "https://www.reddit.com/r/" + subs + "/hot.rss?limit=20", 20, False)
+    if not got:
+        return old["posts"]
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            json.dump({"subs": subs, "at": time.time(), "posts": got}, f)
+    except Exception:
+        pass
+    return got
+
+def lines(name, default):
+    try:
+        with open(DIR + name) as f:
+            got = [l.strip() for l in f if l.strip() and not l.strip().startswith("#")]
+    except Exception:
+        got = []
+    return got or default
+
+pool = ThreadPoolExecutor(24)
+tabs, jobs = [], {}
+
+def tab(id, label, src, short=None):
+    # feed, hn and lobsters keep their colors; the other tabs take turns on the rest of the palette.
+    c = {"feed": 0, "hn": 1, "lobsters": 2}.get(id, 3 + len(tabs) % 5)
+    t = {"id": id, "label": label, "short": short or label, "src": src, "c": c}
+    # How much of the tab row each label needs: capitals and m, w are wider.
+    for k in ("label", "short"):
+        t[k + "W"] = 2 + sum(1.5 if ch.isupper() or ch in "mw" else 1 for ch in t[k])
+    if id in jobs or len(tabs) == 8:
+        return None
+    tabs.append(t)
+    jobs[id] = []
+    return t
+
+for line in lines("news", ["feeds", "hn", "lobsters"]):
+    w = line.split()
+    kind, arg, label = w[0].lower(), w[1] if len(w) > 1 else "", " ".join(w[2:])
+    if kind in ("feeds", "feed"):
+        t = tab("feed", "feed", "")
+        if t:
+            # Queued after the single sources, so a long feed list cannot keep them waiting.
+            t["urls"] = lines("feeds", [])
+    elif kind == "hn":
+        t = tab("hn", "hacker news", "hn", "hn")
+        if t:
+            jobs["hn"].append(pool.submit(hn, t))
+    elif kind == "lobsters":
+        t = tab("lobsters", "lobsters", "lobsters")
+        if t:
+            jobs["lobsters"].append(pool.submit(lobsters, t))
+    elif kind == "reddit":
+        subs = re.sub("^/?r/", "", arg)
+        if re.fullmatch("[A-Za-z0-9_+]+", subs):
+            t = tab("reddit", label or ("reddit" if "+" in subs else "r/" + subs), "reddit")
+            if t:
+                jobs["reddit"].append(pool.submit(reddit, t, subs))
+    elif kind == "rss" and web(arg):
+        name = label or urlsplit(arg).netloc.removeprefix("www.")
+        t = tab("rss:" + arg, name, name)
+        if t:
+            jobs[t["id"]].append(pool.submit(feed, t, web(arg), 20, False))
+
+for t in tabs:
+    for u in t.pop("urls", []):
+        jobs["feed"].append(pool.submit(feed, t, u, 4))
+
+# One deadline for everything: what has not answered by then is left out, and the rest is still shown.
+done = wait([f for fs in jobs.values() for f in fs], timeout=25).done
+
+posts = {}
+for t in tabs:
+    got = [p for f in jobs[t["id"]] if f in done and not f.exception() for p in f.result()]
+    if t["id"] == "feed":
+        got.sort(key=lambda p: -p["at"])
+    seen = set()
+    posts[t["id"]] = [p for p in got if not (p["id"] in seen or seen.add(p["id"]))][:40]
+print(json.dumps({"tabs": tabs, "posts": posts}))
+sys.stdout.flush()
+# Does not wait for the fetches still running.
+os._exit(0)
+'
+  """) every 15m json timeout 40s
+  source now = clock every 60s
+
+  state tab = "all" persist
+
+  let tabs = news.tabs ?? []
+  let cur = tabs.any(t => t.id == tab) ? tab : "all"
+  let all = flatten(tabs.map(t => get(news.posts, t.id, []))).sortBy(p => -p.at).take(60)
+  let items = cur == "all" ? all : (get(news.posts, cur, []) ?? [])
+  let tints = [accent, orange, red, blue, green, magenta, cyan, yellow]
+  let slim = (cols ?? 6) < 5
+  let narrow = slim || len(tabs) > 4
+
+  component Tab(id, label, tint) {
+    Text {
+      text: label; fontSize: 12; align: center; bold: cur == id; maxLines: 1
+      color: cur == id ? tint : muted
+      onTap: tab = id
+    }
+  }
+
+  Column {
+    gap: 4
+    Row {
+      gap: 0
+      Tab { id: "all"; label: "all"; tint: foreground; weight: 4.5 }
+      for t in tabs key t.id {
+        Tab { id: t.id; label: narrow ? t.short : t.label; tint: tints[t.c]; weight: narrow ? t.shortW : t.labelW }
+      }
+      Text { text: "+"; fontSize: 12; color: muted; width: 20; align: center; onTap: terminal('$EDITOR ~/.config/omarchy-proot/news', "news") }
+    }
+    if news == null {
+      Text { text: "loading…"; style: small }
+    } else {
+      if len(items) == 0 {
+        if cur == "feed" {
+          Text { text: "nothing loaded: tap to check the feed list"; style: small; onTap: terminal('$EDITOR ~/.config/omarchy-proot/feeds', "feeds") }
+        } else {
+          Text { text: "nothing to show: tap to retry"; style: small; onTap: refresh() }
+        }
+      }
+    }
+    Column {
+      scroll: true
+      weight: 1
+      gap: 6
+      for p in items key p.id {
+        let age = now - p.at
+        Column {
+          gap: 0
+          onTap: url(p.url)
+          Text { text: p.title; fontSize: 13; maxLines: 2 }
+          Row {
+            gap: 6
+            Text {
+              text: cur != "all" || p.src == "" ? p.label : p.label == "" ? p.src : "${p.src} · ${p.label}"
+              fontSize: 10; color: tints[p.c]; maxLines: 1; weight: 1
+            }
+            if p.pts != null {
+              Text { text: slim ? "${p.pts}p · ${p.com}c" : "${p.pts} pts · ${p.com} com"; fontSize: 10; color: muted; width: slim ? 80 : 124; align: end; maxLines: 1; onTap: url(p.disc) }
+            }
+            Text {
+              text: p.at == 0 ? "" : age < 3600 ? "${max(floor(age / 60), 1)}m" : age < 86400 ? "${floor(age / 3600)}h" : "${floor(age / 86400)}d"
+              fontSize: 10; color: muted; width: 28; align: end
+            }
+          }
+        }
+      }
+    }
+    if cur == "feed" && len(items) > 0 {
+      Text { text: "edit the feed list"; fontSize: 10; color: muted; align: end; onTap: terminal('$EDITOR ~/.config/omarchy-proot/feeds', "feeds") }
+    }
+  }
+}
