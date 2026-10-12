@@ -540,7 +540,7 @@ if __name__ == '__main__':
         Column {
           gap: 6
           Text { text: "Tibo重置监控"; font: sans; fontSize: 24; bold: true }
-          Text { text: "额度重置与重置卡 · 北京时间"; font: sans; fontSize: 13; color: secondary }
+          Text { text: "重置与重置卡 · 日历采用北京时间"; font: sans; fontSize: 13; color: secondary }
         }
         Column {
           gap: 8

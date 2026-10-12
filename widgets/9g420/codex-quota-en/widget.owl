@@ -540,7 +540,7 @@ if __name__ == '__main__':
         Column {
           gap: 6
           Text { text: "Tibo Reset Monitor"; font: sans; fontSize: 24; bold: true }
-          Text { text: "Quota reset与Reset credit · 北京h间"; font: sans; fontSize: 13; color: secondary }
+          Text { text: "Resets and credits · Calendar: Beijing time"; font: sans; fontSize: 13; color: secondary }
         }
         Column {
           gap: 8
