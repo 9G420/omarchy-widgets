@@ -24,6 +24,7 @@ import json
 import math
 from pathlib import Path
 import time
+import tempfile
 
 
 def epoch(value):
@@ -98,16 +99,20 @@ def load(path):
 
 def save(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
-    temp = path.with_suffix('.tmp')
-    temp.write_text(json.dumps(data, ensure_ascii=False))
-    temp.chmod(0o600)
-    temp.replace(path)
+    with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
+                                     prefix=path.name + '.', suffix='.tmp', delete=False) as output:
+        json.dump(data, output, ensure_ascii=False)
+        temporary = Path(output.name)
+    try:
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--sessions', type=Path, default=Path.home() / '.codex/sessions')
-    parser.add_argument('--cache', type=Path, default=Path.home() / '.cache/codex-quota-community/account.json')
+    parser.add_argument('--cache', type=Path, default=Path.home() / '.cache/codex-quota-community/account-zh.json')
     parser.add_argument('--now', type=int, default=int(time.time()))
     args = parser.parse_args()
     old = load(args.cache)
@@ -149,6 +154,7 @@ import datetime as dt
 import json
 from pathlib import Path
 import time
+import tempfile
 from urllib.request import Request, urlopen
 
 BASE = 'https://aihot.news'
@@ -217,10 +223,14 @@ def load(path):
 
 def save(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix('.tmp')
-    temporary.write_text(json.dumps(data, ensure_ascii=False))
-    temporary.chmod(0o600)
-    temporary.replace(path)
+    with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
+                                     prefix=path.name + '.', suffix='.tmp', delete=False) as output:
+        json.dump(data, output, ensure_ascii=False)
+        temporary = Path(output.name)
+    try:
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def summary_event(event):

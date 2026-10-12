@@ -1,8 +1,8 @@
-# Codex Quota and Resets — English
+# Codex Quota and Resets
 
 Author: **9G420** · License: **MIT** · Version: **1.2.0**
 
-A resizable Codex quota and public reset monitor for Omalauncher. This folder contains the English edition; the sibling `codex-quota-zh` folder contains the other language.
+A resizable Codex quota and public reset monitor for Omalauncher. Choose `codex-quota-en` for English or `codex-quota-zh` for Simplified Chinese. Both editions can be installed, using different widget filenames.
 
 ## Features
 
@@ -23,6 +23,6 @@ For **your account quota**, install and sign in to Codex CLI separately, then us
 
 The quota source checks every minute; the public monitor checks every ten minutes. Percentages reflect the latest available local record and may lag the account. A countdown reaching zero does not imply a refill: the percentage becomes unknown until a newer record confirms the window. This widget does not grant quota or reset an account.
 
-Public reset information is fetched anonymously from `https://aihot.news/codex-reset` and its daily-record endpoint. AIHOT is an unofficial aggregator; original-post links are supplied for verification. Public reset-calendar dates use Beijing time (UTC+8); account reset timestamps are displayed in the device timezone. A reset credit or general announcement does not prove that a particular account has refilled. Public titles and original post text retain their source language.
+Public reset information is fetched anonymously from `https://aihot.news/codex-reset` and its daily-record endpoint. AIHOT is an unofficial aggregator; original-post links are supplied for verification. Public reset-calendar dates use Beijing time (UTC+8); account reset timestamps are displayed in the device timezone. A reset credit or general announcement does not prove that a particular account has refilled. Public titles, original post text and source audience/stage descriptions retain their source language. Announcement and fetch timestamps, like account reset timestamps, are displayed in the device timezone.
 
-Only a quota snapshot and public-monitor cache are written under `~/.cache/codex-quota-community/`. The widget's acknowledgement states are stored by the launcher. No login credentials, private conversations, personal quota values or device files are bundled with the widget or sent to the monitor. Parsing depends on Codex CLI's record format and AIHOT's page schema; changes may require an update. Monitor fetch failures retain cached records and show a stale status.
+Each edition writes its own quota snapshot and public-monitor cache under `~/.cache/codex-quota-community/`. The widget's acknowledgement states are stored by the launcher. No login credentials, private conversations, personal quota values or device files are bundled with the widget or sent to the monitor. Parsing depends on Codex CLI's record format and AIHOT's page schema; changes may require an update. Monitor fetch failures retain cached records and show a stale status.
