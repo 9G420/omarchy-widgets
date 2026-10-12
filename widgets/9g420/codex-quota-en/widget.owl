@@ -1,0 +1,623 @@
+// Author: 9G420. MIT. English edition.
+// Self-contained Python sources; no helper downloads or account uploads.
+widget "Codex Quota and Resets" {
+  size: 6x3
+  minSize: 2x2
+  padding: 10
+  meta { owl: 5; version: "1.2.0"; author: "9G420"; license: "MIT"; category: "dev"; description: "Resizable Codex quota card with reset countdowns, public Tibo announcements, statistics and a reset calendar. Green marks an unread reset update." }
+  requires { pacman: ["python"] }
+
+  state refreshRequest = 0
+  state selectedDate = ""
+  state monthOffset = 0
+  state tab = "monitor"
+  state ackResetKey = "" persist
+  state seenTibo = "" persist
+  state remindFive = 0 persist
+  state remindWeek = 0 persist
+
+  let safeDate = match(selectedDate, "^[0-9]{4}-[0-9]{2}-[0-9]{2}$") ?? ""
+  source q = cmd("""python - <<'CODEX_QUOTA_PY'
+import argparse
+import datetime as dt
+import json
+import math
+from pathlib import Path
+import time
+
+
+def epoch(value):
+    try:
+        return int(dt.datetime.fromisoformat(value.replace('Z', '+00:00')).timestamp())
+    except (AttributeError, ValueError, TypeError, OverflowError):
+        return None
+
+
+def windows(limits):
+    result = {}
+    for slot in ('primary', 'secondary'):
+        window = limits.get(slot)
+        if not isinstance(window, dict):
+            continue
+        name = {300: 'five', 10080: 'week'}.get(window.get('window_minutes'))
+        used, reset = window.get('used_percent'), window.get('resets_at')
+        if (name and isinstance(used, (int, float)) and not isinstance(used, bool)
+                and math.isfinite(used) and 0 <= used <= 100
+                and isinstance(reset, (int, float)) and not isinstance(reset, bool)
+                and math.isfinite(reset) and reset > 0):
+            result[name] = {'remaining': round(100 - used, 1), 'resets_at': int(reset)}
+    return result
+
+
+def latest(sessions):
+    try:
+        paths = sorted(sessions.rglob('*.jsonl'), key=lambda p: p.stat().st_mtime, reverse=True)[:12]
+    except OSError:
+        return None
+    best = None
+    for path in paths:
+        try:
+            with path.open('rb') as source:
+                size = path.stat().st_size
+                start = max(0, size - 2 * 1024 * 1024)
+                source.seek(start)
+                if start:
+                    source.readline()
+                lines = source.read().splitlines()
+        except OSError:
+            continue
+        for line in reversed(lines):
+            if b'"token_count"' not in line or b'"rate_limits"' not in line:
+                continue
+            try:
+                event = json.loads(line)
+                payload = event.get('payload', {})
+                limits = payload.get('rate_limits')
+                if (event.get('type') != 'event_msg' or payload.get('type') != 'token_count'
+                        or not isinstance(limits, dict) or limits.get('limit_id') not in (None, 'codex')):
+                    continue
+                stamp = epoch(event.get('timestamp'))
+                data = windows(limits)
+                if stamp is None or not data:
+                    continue
+                snapshot = {'updated_at': stamp, 'windows': data}
+                if best is None or stamp > best['updated_at']:
+                    best = snapshot
+            except (ValueError, TypeError, AttributeError):
+                continue
+    return best
+
+
+def load(path):
+    try:
+        data = json.loads(path.read_text())
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temp = path.with_suffix('.tmp')
+    temp.write_text(json.dumps(data, ensure_ascii=False))
+    temp.chmod(0o600)
+    temp.replace(path)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--sessions', type=Path, default=Path.home() / '.codex/sessions')
+    parser.add_argument('--cache', type=Path, default=Path.home() / '.cache/codex-quota-community/account.json')
+    parser.add_argument('--now', type=int, default=int(time.time()))
+    args = parser.parse_args()
+    old = load(args.cache)
+    previous = old.get('snapshot') or {}
+    fresh = latest(args.sessions)
+    events = old.get('events', [])
+    snapshot = previous
+    if fresh and fresh['updated_at'] > previous.get('updated_at', -1):
+        for name, window in fresh['windows'].items():
+            prior = previous.get('windows', {}).get(name)
+            if (prior and window['resets_at'] > prior['resets_at']
+                    and fresh['updated_at'] >= prior['resets_at']):
+                events.insert(0, {'kind': name, 'time': fresh['updated_at'],
+                                  'remaining': window['remaining'], 'resets_at': window['resets_at']})
+        snapshot = fresh
+        save(args.cache, {'snapshot': snapshot, 'events': events[:20]})
+    result = {'available': bool(snapshot.get('windows')), 'updated_at': snapshot.get('updated_at'),
+              'stale': bool(snapshot and args.now - snapshot.get('updated_at', 0) > 900),
+              'events': events[:20]}
+    for name in ('five', 'week'):
+        value = dict(snapshot.get('windows', {}).get(name) or {})
+        if not value:
+            value = {'remaining': None, 'resets_at': None, 'state': 'unknown'}
+        elif args.now >= value['resets_at']:
+            value.update(remaining=None, state='awaiting_reset')
+        else:
+            value['state'] = 'reported'
+        result[name] = value
+    print(json.dumps(result, ensure_ascii=False))
+
+
+if __name__ == '__main__':
+    main()
+CODEX_QUOTA_PY
+""") every 1m timeout 10s json
+  let resetScript = """import argparse
+import calendar
+import datetime as dt
+import json
+from pathlib import Path
+import time
+from urllib.request import Request, urlopen
+
+BASE = 'https://aihot.news'
+
+
+def epoch(value):
+    try:
+        return int(dt.datetime.fromisoformat(value.replace('Z', '+00:00')).timestamp())
+    except (AttributeError, ValueError, TypeError):
+        return None
+
+
+def parse_page(text):
+    marker = 'streamController.enqueue('
+    if marker not in text:
+        raise ValueError('public reset page has no data')
+    encoded, _ = json.JSONDecoder().raw_decode(text.split(marker, 1)[1])
+    table = json.loads(encoded)
+    memo = {}
+
+    def decode(index):
+        if index < 0:
+            return None
+        if index in memo:
+            return memo[index]
+        value = table[index]
+        if isinstance(value, dict):
+            result = {}
+            memo[index] = result
+            for key, item in value.items():
+                result[str(decode(int(key[1:])))] = decode(item)
+        elif isinstance(value, list):
+            result = []
+            memo[index] = result
+            result.extend(decode(item) for item in value)
+        else:
+            result = value
+        memo[index] = result
+        return result
+
+    try:
+        data = decode(0)['loaderData']['codex-reset']
+        if data.get('schemaVersion') != 1 or not isinstance(data.get('calendar'), list):
+            raise ValueError('public reset schema changed')
+        return data
+    except (KeyError, TypeError, IndexError, RecursionError) as error:
+        raise ValueError('public reset schema changed') from error
+
+
+def fetch(path):
+    request = Request(BASE + path, headers={'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html, application/json'})
+    with urlopen(request, timeout=8) as response:
+        body = response.read(2 * 1024 * 1024 + 1)
+        if len(body) > 2 * 1024 * 1024:
+            raise ValueError('response too large')
+        return body.decode('utf-8')
+
+
+def load(path):
+    try:
+        result = json.loads(path.read_text())
+        return result if isinstance(result, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix('.tmp')
+    temporary.write_text(json.dumps(data, ensure_ascii=False))
+    temporary.chmod(0o600)
+    temporary.replace(path)
+
+
+def summary_event(event):
+    posts = sorted(event.get('posts') or [], key=lambda item: item.get('publishedAt') or '', reverse=True)
+    post = posts[0] if posts else {}
+    presentation = event.get('presentation') or {}
+    status = presentation.get('status') or event.get('status')
+    return {'id': event.get('id'), 'title': event.get('title') or event.get('displayLabel') or 'Reset update',
+            'kind': {'direct_reset': 'Quota reset', 'reset_credit': 'Reset credit'}.get(event.get('type'), event.get('displayLabel') or 'Reset update'),
+            'status': {'confirmed': 'Confirmed', 'likely': 'Likely active · unconfirmed', 'expected': 'Expected', 'pending': 'Pending',
+                       'announced': 'Announced'}.get(status, 'Unconfirmed'),
+            'time': epoch(event.get('confirmedAt') or event.get('updatedAt') or event.get('createdAt')),
+            'message': (post.get('text') or '')[:140],
+            'url': post.get('url') or event.get('url') or BASE + '/codex-reset',
+            'schedule': (event.get('schedule') or {}).get('label') or '',
+            'audience': presentation.get('audienceZh') or 'Audience unspecified',
+            'stage': post.get('stage') or 'Public update'}
+
+
+def reset_identity(current, last_landed):
+    direct = [event for event in (current, last_landed)
+              if isinstance(event, dict) and event.get('type') == 'direct_reset']
+    if not direct:
+        return None
+    event = max(direct, key=lambda item: item.get('updatedAt') or item.get('createdAt') or '')
+    return ':'.join(str(event.get(key) or '') for key in ('id', 'updatedAt', 'status'))
+
+
+def calendar_view(records, today, offset):
+    reference = dt.date.fromisoformat(today)
+    number = reference.year * 12 + reference.month - 1 + max(-24, min(12, offset))
+    year, month = divmod(number, 12)
+    month += 1
+    grouped = {}
+    for record in records:
+        date = record.get('date')
+        try:
+            dt.date.fromisoformat(date)
+        except (TypeError, ValueError):
+            continue
+        grouped.setdefault(date, []).append(record)
+    cells = []
+    for week in calendar.Calendar(firstweekday=0).monthdatescalendar(year, month):
+        for day in week:
+            events = grouped.get(day.isoformat(), [])
+            cells.append({'date': day.isoformat(), 'day': day.day, 'in_month': day.month == month,
+                          'today': day.isoformat() == today,
+                          'reset': any(e.get('type') == 'direct_reset' for e in events),
+                          'credit': any(e.get('type') == 'reset_credit' for e in events),
+                          'pending': any(e.get('state') == 'pending' for e in events)})
+    prefix = f'{year:04d}-{month:02d}'
+    month_events = [r for r in records if (r.get('date') or '').startswith(prefix)]
+    return {'month': prefix, 'label': f'{year}-{month:02d}', 'cells': cells,
+            'reset_count': sum(e.get('type') == 'direct_reset' and e.get('state') != 'pending' for e in month_events),
+            'credit_count': sum(e.get('type') == 'reset_credit' and e.get('state') != 'pending' for e in month_events)}
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--cache', type=Path, default=Path.home() / '.cache/codex-quota-community/tibo-en.json')
+    parser.add_argument('--refresh', action='store_true')
+    parser.add_argument('--refresh-request', type=int, default=0)
+    parser.add_argument('--page-file', type=Path)
+    parser.add_argument('--date', default='')
+    parser.add_argument('--month-offset', type=int, default=0)
+    args = parser.parse_args()
+    now = int(time.time())
+    saved = load(args.cache)
+    if args.refresh or args.refresh_request != saved.get('refresh_request', 0) or args.page_file or 'raw_calendar' not in saved or now - saved.get('attempted_at', 0) >= 600:
+        saved['attempted_at'] = now
+        saved['refresh_request'] = args.refresh_request
+        try:
+            data = parse_page(args.page_file.read_text() if args.page_file else fetch('/codex-reset'))
+            if data.get('version') != saved.get('version'):
+                saved['day_cache'] = {}
+            current, landed = data.get('current'), data.get('lastLanded')
+            source_events = [e for e in [current, landed] + data.get('events', []) if e]
+            days = saved.get('day_cache', {})
+            today = data.get('today')
+            if today:
+                days[today] = data.get('events', [])
+            featured = current or landed
+            latest = summary_event(featured) if featured else None
+            monitor = data.get('monitor') or {}
+            saved.update(version=data.get('version'), fetched_at=now, fetch_ok=True,
+                         checked_at=epoch(data.get('checkedAt')),
+                         monitor_label={'attention': 'Monitor needs attention', 'delayed': 'Monitor delayed',
+                                        'ok': 'Monitor healthy', 'healthy': 'Monitor healthy'}.get(monitor.get('status'), 'Monitor status unknown'),
+                         collected_at=epoch(monitor.get('lastCollectedAt')),
+                         summary=(current.get('title') or 'Pending reset update') if current else 'No pending reset',
+                         headline=latest['title'] if latest else 'No recorded updates',
+                         key=(latest['id'] + ':' + str(latest['time']) + ':' + latest['status']) if latest else None,
+                         reset_key=reset_identity(current, landed), featured=latest,
+                         current=summary_event(current) if current else None,
+                         entries=[summary_event(e) for e in source_events],
+                         raw_calendar=data.get('calendar', []), stats=data.get('stats', {}),
+                         today=today, day_cache=days, error='')
+        except Exception:
+            saved.update(fetch_ok=False, error='Monitor unavailable; keeping previous data')
+        save(args.cache, saved)
+    public = {key: value for key, value in saved.items()
+              if key not in ('raw_history', 'raw_calendar', 'day_cache', 'version')}
+    public['stale'] = not saved.get('fetch_ok') or now - saved.get('fetched_at', 0) > 1800
+    today = saved.get('today') or dt.datetime.now(dt.timezone(dt.timedelta(hours=8))).date().isoformat()
+    try:
+        selected = dt.date.fromisoformat(args.date or today).isoformat()
+    except ValueError:
+        selected = today
+    days = saved.get('day_cache', {})
+    records = saved.get('raw_calendar', [])
+    has_events = any(r.get('date') == selected for r in records)
+    selection_error = ''
+    if has_events and selected not in days and not args.page_file:
+        try:
+            day_data = json.loads(fetch('/api/site/codex-reset/days/' + selected))
+            if day_data.get('version') != saved.get('version'):
+                raise ValueError('monitor changed while reading')
+            days[selected] = day_data.get('events', [])
+            saved['day_cache'] = days
+            save(args.cache, saved)
+        except Exception:
+            selection_error = 'This day could not be loaded. Try again.'
+    public.update(calendar=calendar_view(records, today, args.month_offset), selected_date=selected,
+                  selected_label=selected,
+                  selected_entries=[summary_event(e) for e in days.get(selected, [])],
+                  selection_error=selection_error)
+    print(json.dumps(public, ensure_ascii=False))
+
+
+if __name__ == '__main__':
+    main()
+"""
+  source tibo = cmd("python - --date '${safeDate}' --month-offset ${floor(max(-24, min(12, num(monthOffset, 0))))} --refresh-request ${floor(max(0, num(refreshRequest, 0)))} <<'CODEX_RESET_PY'\n${resetScript}\nCODEX_RESET_PY") every 10m timeout 30s json
+  source now = clock every 1m
+
+  let secondary = alpha(foreground, 0.72)
+  let quiet = alpha(foreground, 0.52)
+  let panel = alpha(foreground, 0.055)
+  let unreadReset = tibo.reset_key != null && ackResetKey != "" && tibo.reset_key != ackResetKey
+  let tight = (cols ?? 3) < 3 || (rows ?? 3) < 3
+
+  when tibo.reset_key != null && ackResetKey == "" { ackResetKey = tibo.reset_key }
+  when tibo.key != null && seenTibo == "" { seenTibo = tibo.key }
+  on tibo.key {
+    notify(value != null && seenTibo != "" && value != seenTibo ? "Tibo reset update" : null, tibo.headline)
+    seenTibo = value ?? seenTibo
+  }
+  at q.five.resets_at {
+    notify(q.five.resets_at != null && remindFive != q.five.resets_at ? "Codex 5-hour quota" : null, "The estimated reset time has arrived. Check the latest account quota.")
+    remindFive = q.five.resets_at ?? remindFive
+  }
+  at q.week.resets_at {
+    notify(q.week.resets_at != null && remindWeek != q.week.resets_at ? "Codex weekly quota" : null, "The estimated reset time has arrived. Check the latest account quota.")
+    remindWeek = q.week.resets_at ?? remindWeek
+  }
+
+  onTap: { ackResetKey = tibo.reset_key ?? ackResetKey; screen() }
+
+  component Lamp(lit, diameter = 10) {
+    Canvas {
+      size: diameter
+      circle(width / 2, height / 2, min(width, height) / 2, fill: lit ? #34d399 : alpha(foreground, 0.22))
+    }
+  }
+  component Rule() { Spacer { height: 1; fill: width; background: alpha(foreground, 0.12) } }
+  component Quota(label, data, dense = false) {
+    Column {
+      gap: dense ? 3 : 5
+      padding: dense ? 8 : 14
+      background: panel
+      radius: 0
+      Text { text: label; font: sans; fontSize: dense ? 12 : 14; color: secondary; maxLines: 1 }
+      Text {
+        text: data.remaining == null ? "Pending" : "${data.remaining}%"
+        fontSize: dense ? 26 : 34
+        bold: true
+        color: data.remaining != null && data.remaining <= 15 ? #fb927d : foreground
+        maxLines: 1
+      }
+      if data.remaining != null {
+        Progress { value: data.remaining; color: alpha(foreground, 0.75); track: alpha(foreground, 0.12); height: 3; fill: width }
+      }
+      let left = data.resets_at == null ? null : max(data.resets_at - now, 0)
+      Text {
+        text: left == null ? "No reset time" : left <= 0 ? "Due · unconfirmed" : left >= 86400 ? (dense ? "${floor(left / 86400)}d${floor(left % 86400 / 3600)}h left" : "${floor(left / 86400)}d${floor(left % 86400 / 3600)}h until reset") : (dense ? "${floor(left / 3600)}h${floor(left % 3600 / 60)}m left" : "${floor(left / 3600)}h${floor(left % 3600 / 60)}m until reset")
+        font: sans
+        fontSize: dense ? 10 : 12
+        color: secondary
+        maxLines: 1
+      }
+      if !dense && data.resets_at != null {
+        Text { text: "Expected ${fmtTime(data.resets_at, "MM-dd HH:mm")} reset"; font: sans; fontSize: 12; color: quiet; maxLines: 1 }
+      }
+    }
+  }
+  component Metric(label, value) {
+    Column {
+      gap: 6
+      padding: 12
+      background: panel
+      radius: 0
+      Text { text: label; font: sans; fontSize: 12; color: secondary; maxLines: 1 }
+      Text { text: value ?? "—"; fontSize: 24; bold: true; maxLines: 1 }
+    }
+  }
+  component Post(item) {
+    Column {
+      gap: 10
+      padding: 14
+      background: panel
+      radius: 0
+      Row {
+        align: center
+        Column {
+          gap: 2
+          weight: 1
+          Text { text: "Tibo"; font: sans; fontSize: 15; bold: true; maxLines: 1 }
+          Text { text: "@thsottiaux"; fontSize: 11; color: secondary; maxLines: 1 }
+        }
+        Text { text: item.status; font: sans; fontSize: 12; color: item.status == "Confirmed" ? #34d399 : #fbbf24; width: 112; align: end; maxLines: 2 }
+      }
+      Text { text: item.title; font: sans; fontSize: 17; bold: true; maxLines: 3 }
+      if item.message != "" {
+        Text { text: item.message; font: sans; fontSize: 16; maxLines: 5 }
+      }
+      Text { text: "${item.stage} · ${item.kind} · ${item.audience}"; font: sans; fontSize: 12; color: secondary; maxLines: 2 }
+      if item.schedule != "" && item.status != "Confirmed" {
+        Text { text: item.schedule; font: sans; fontSize: 13; color: #fbbf24; maxLines: 2 }
+      }
+      Row {
+        align: center
+        Text { text: fmtTime(item.time, "MM-dd HH:mm"); fontSize: 12; color: secondary; weight: 1 }
+        Button { text: "Original post ↗"; onTap: url(item.url) }
+      }
+    }
+  }
+
+  Column {
+    gap: tight ? 5 : 8
+    Row {
+      align: center
+      Text { text: "Codex"; font: sans; fontSize: tight ? 12 : 14; bold: true; weight: 1; maxLines: 1 }
+      Lamp { lit: unreadReset; diameter: 10 }
+    }
+    if tight {
+      for data, i in [q.five, q.week] {
+        Row {
+          align: center
+          Text { text: i == 0 ? "5h" : "Weekly"; font: sans; fontSize: 11; color: secondary; weight: 1; maxLines: 1 }
+          Text { text: data.remaining == null ? "—" : "${data.remaining}%"; fontSize: 20; bold: true; width: 64; align: end; maxLines: 1 }
+        }
+      }
+      Text { text: unreadReset ? "New reset · tap to view" : "Reset monitor"; font: sans; fontSize: 10; color: unreadReset ? #34d399 : secondary; maxLines: 1 }
+    } else {
+      Row {
+        gap: 8
+        Quota { label: "5h"; data: q.five; dense: (rows ?? 3) < 4; weight: 1 }
+        Quota { label: "Weekly"; data: q.week; dense: (rows ?? 3) < 4; weight: 1 }
+      }
+      Row {
+        align: center
+        Text { text: "Tibo resets"; font: sans; fontSize: 12; bold: true; weight: 1; maxLines: 1 }
+        Text { text: unreadReset ? "New update" : "View ›"; font: sans; fontSize: 11; color: unreadReset ? #34d399 : secondary; width: 48; align: end; maxLines: 1 }
+      }
+      Text {
+        text: unreadReset ? (tibo.current.title ?? tibo.featured.title ?? "New reset update") : tibo.current != null ? tibo.current.title : tibo.stats.lastResetDate != null ? "Last reset ${sub(tibo.stats.lastResetDate, 5, 10)}" : "No pending reset"
+        font: sans
+        fontSize: 11
+        color: secondary
+        maxLines: 1
+      }
+      if (rows ?? 3) >= 4 {
+        Text { text: tibo.stale ? "Monitor unavailable" : tibo.summary; font: sans; fontSize: 11; color: secondary; maxLines: 2 }
+      }
+      Text { text: q.updated_at == null ? "Waiting for account records" : "Quota updated ${fmtTime(q.updated_at, "HH:mm")}${q.stale ? " · pending sync" : ""}"; font: sans; fontSize: 10; color: quiet; maxLines: 1 }
+    }
+  }
+
+  screen {
+    title: "Quota and Resets"
+    Column {
+      scroll: true
+      gap: 16
+      Row {
+        gap: 8
+        Button { text: "Reset monitor"; color: tab == "monitor" ? foreground : secondary; onTap: tab = "monitor" }
+        Button { text: "My quota"; color: tab == "account" ? foreground : secondary; onTap: tab = "account" }
+      }
+      if tab == "account" {
+        Text { text: "My remaining quota"; font: sans; fontSize: 22; bold: true }
+        Row {
+          gap: 12
+          Quota { label: "5-hour quota"; data: q.five; weight: 1 }
+          Quota { label: "Weekly quota"; data: q.week; weight: 1 }
+        }
+        Text { text: q.updated_at == null ? "No account record yet" : "Recorded at ${fmtTime(q.updated_at, "MM-dd HH:mm")}"; font: sans; fontSize: 13; color: secondary }
+        Button { text: "Refresh quota"; onTap: refresh() }
+        Text { text: "Updates from new local Codex account records. Countdown is an estimate; a refill requires account confirmation."; font: sans; fontSize: 13; color: secondary }
+        if len(q.events) > 0 {
+          Rule { }
+          Text { text: "New quota window records"; font: sans; fontSize: 16; bold: true }
+          for item in q.events key str(item.time) + item.kind {
+            Text { text: "${fmtTime(item.time, "MM-dd HH:mm")} · ${item.kind == "five" ? "5h" : "Weekly"} · ${item.remaining}%"; fontSize: 13 }
+          }
+        }
+      } else {
+        Column {
+          gap: 6
+          Text { text: "Tibo Reset Monitor"; font: sans; fontSize: 24; bold: true }
+          Text { text: "Resets and reset credits · Beijing time"; font: sans; fontSize: 13; color: secondary }
+        }
+        Column {
+          gap: 8
+          padding: 14
+          background: panel
+          radius: 0
+          Text { text: tibo.stale ? "Monitor update unavailable" : tibo.current != null ? tibo.current.status : "No pending reset"; font: sans; fontSize: 13; color: secondary; maxLines: 2 }
+          Text { text: tibo.current != null ? tibo.current.title : tibo.stats.lastResetDate != null ? "Last quota reset：${tibo.stats.lastResetDate}" : "Waiting for reset updates"; font: sans; fontSize: 20; bold: true; maxLines: 3 }
+          Text { text: tibo.current != null ? tibo.current.schedule : "A confirmed date is not an exact delivery time. Unannounced resets are not predicted."; font: sans; fontSize: 12; color: secondary; maxLines: 3 }
+        }
+        if tibo.featured != null { Post { item: tibo.featured } }
+        Grid {
+          columns: 2
+          gap: 10
+          Metric { label: "Resets in 90 days"; value: tibo.stats.resets90 == null ? null : "${tibo.stats.resets90}" }
+          Metric { label: "Credits in 90 days"; value: tibo.stats.credits90 == null ? null : "${tibo.stats.credits90}" }
+          Metric { label: "Median reset interval"; value: tibo.stats.medianIntervalDays == null ? null : "${tibo.stats.medianIntervalDays}d" }
+          Metric { label: "Last quota reset"; value: tibo.stats.lastResetDate == null ? null : sub(tibo.stats.lastResetDate, 5, 10) }
+        }
+        Rule { }
+        Column {
+          gap: 5
+          Text { text: "Reset calendar"; font: sans; fontSize: 20; bold: true }
+          Text { text: "Tap a date for its records and original posts"; font: sans; fontSize: 12; color: secondary }
+        }
+        Row {
+          gap: 8
+          align: center
+          Button { text: "‹"; onTap: { monthOffset = max(monthOffset - 1, -24); selectedDate = ""; refresh() } }
+          Text { text: tibo.calendar.label; font: sans; fontSize: 16; bold: true; weight: 1; align: center; maxLines: 1 }
+          Button { text: "›"; onTap: { monthOffset = min(monthOffset + 1, 12); selectedDate = ""; refresh() } }
+        }
+        Text { text: "This month: ${tibo.calendar.reset_count ?? 0} resets · ${tibo.calendar.credit_count ?? 0} credits"; font: sans; fontSize: 12; color: secondary }
+        Grid {
+          columns: 7
+          gap: 4
+          for label in ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] {
+            Text { text: label; font: sans; fontSize: 12; color: secondary; align: center }
+          }
+        }
+        Grid {
+          columns: 7
+          gap: 4
+          for day in tibo.calendar.cells key day.date {
+            Column {
+              gap: 4
+              padding: [0, 7]
+              background: day.date == tibo.selected_date ? alpha(foreground, 0.16) : day.in_month ? panel : transparent
+              radius: 0
+              onTap: { selectedDate = day.date; refresh() }
+              Text { text: day.day; fontSize: 14; bold: day.today; color: day.in_month ? foreground : quiet; align: center; maxLines: 1 }
+              Canvas {
+                height: 5
+                fill: width
+                if day.reset { circle(width / 2 - (day.credit ? 4 : 0), height / 2, 2.5, fill: day.pending ? #fbbf24 : #34d399) }
+                if day.credit { circle(width / 2 + (day.reset ? 4 : 0), height / 2, 2.5, fill: #60a5fa) }
+              }
+            }
+          }
+        }
+        Text { text: "Green: reset · Blue: credit · Yellow: pending"; font: sans; fontSize: 11; color: secondary }
+        Row {
+          align: center
+          Text { text: "${tibo.selected_label ?? "Today"} records"; font: sans; fontSize: 17; bold: true; weight: 1 }
+          Button { text: "Latest records"; onTap: { monthOffset = 0; selectedDate = tibo.stats.lastResetDate ?? ""; refresh() } }
+        }
+        if tibo.selection_error != "" && tibo.selection_error != null {
+          Text { text: tibo.selection_error; font: sans; fontSize: 13; color: #fbbf24 }
+        } else if len(tibo.selected_entries) == 0 {
+          Text { text: "No records for this day"; font: sans; fontSize: 14; color: secondary; padding: [0, 8] }
+        } else {
+          for item in tibo.selected_entries key item.id { Post { item: item } }
+        }
+        Rule { }
+        Column {
+          gap: 8
+          Text { text: "Sources and monitor status"; font: sans; fontSize: 16; bold: true }
+          Text { text: tibo.stale ? "Fetch failed · showing cached data" : tibo.monitor_label; font: sans; fontSize: 13; color: tibo.stale || tibo.monitor_label != "Monitor healthy" ? #fbbf24 : secondary }
+          Text { text: "Last fetched ${tibo.fetched_at == null ? "—" : fmtTime(tibo.fetched_at, "MM-dd HH:mm")} · Full check ${tibo.checked_at == null ? "—" : fmtTime(tibo.checked_at, "MM-dd HH:mm")}"; font: sans; fontSize: 12; color: secondary }
+          Text { text: "Compiled by AIHOT, an unofficial source. Reset credits do not confirm an account refill. See My quota."; font: sans; fontSize: 12; color: secondary }
+          Row {
+            gap: 8
+            Button { text: "Check updates"; onTap: { refreshRequest = refreshRequest + 1; refresh() } }
+            Button { text: "Monitor website ↗"; onTap: url("https://aihot.news/codex-reset") }
+          }
+        }
+      }
+    }
+  }
+}
