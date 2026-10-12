@@ -1595,7 +1595,9 @@ var OPERATORS = {
   "+": function(a, b) {
     if (typeof a === "number" && typeof b === "number") return a + b
     if (Array.isArray(a) && Array.isArray(b)) return lst(a.concat(b))
-    if (typeof a === "string" || typeof b === "string") return text(a) + text(b)
+    // Strings join as written ("- " + x keeps its space); only other values are formatted.
+    if (typeof a === "string" || typeof b === "string")
+      return (typeof a === "string" ? a : text(a)) + (typeof b === "string" ? b : text(b))
     var x = num(a), y = num(b)
     return x !== null && y !== null ? x + y : null
   },
