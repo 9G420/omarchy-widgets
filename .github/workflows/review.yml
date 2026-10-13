@@ -65,7 +65,7 @@ jobs:
             done
             # Programs whose package is neither declared nor part of a base system.
             for prog in $(awk '$1 == "program" { print $2 }' deps.txt); do
-              owner=$(pacman -Fq "usr/bin/$prog" 2>/dev/null | head -1 | cut -d/ -f2)
+              owner=$(pacman -Fq "usr/bin/$prog" 2>/dev/null | head -1 | cut -d/ -f2 || true)
               if [ -z "$owner" ]; then
                 echo "- ⚠️ \`$prog\`: no Arch package provides it" >> "$GITHUB_STEP_SUMMARY"
               elif ! echo "$declared" | grep -qx "$owner" && ! pacman -Qq "$owner" >/dev/null 2>&1; then
