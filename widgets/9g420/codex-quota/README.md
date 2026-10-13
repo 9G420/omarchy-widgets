@@ -1,12 +1,13 @@
 # Codex Quota and Tibo Reset Monitor
 
-A bilingual English/Simplified Chinese OWL 6 home-screen widget for local Codex quota snapshots and public reset announcements.
+A seven-language OWL 6 home-screen widget for local Codex quota snapshots and public reset announcements. The interface is available in English, Simplified Chinese, Spanish, German, French, Japanese, and Korean.
 
 ## Features
 
 - Reads five-hour and weekly quota snapshots from local Codex session records. Quota values and the local cache stay on the device.
 - Shows estimated reset countdowns, awaiting-confirmation states, recent quota-window changes, and reset-time notifications.
 - Reads public Tibo announcements from the documented Codex Reset JSON API. It uses only `GET /api/feed` and `GET /api/timeline`, with a project-identifying User-Agent.
+- Displays Tibo announcements as returned by the API; only the widget's own interface labels are translated.
 - Refreshes the public data every five minutes, observes the API's one-request-per-minute ceiling and `Retry-After`, and keeps the last valid cache when a request fails.
 - Separates announced resets from credit announcements. Only a timeline event with `group: reset` and `announcement_state: announced` counts as a confirmed reset.
 - Includes a calendar, selected-day records, monthly and 90-day counts, median confirmed-reset interval, source links, and a persistent language switch.
@@ -16,7 +17,7 @@ The widget displays a clickable **Data: codex-reset.com** credit next to the pub
 ## Install and use
 
 1. Add `widget.owl` to the Omarchy widget store or install it through your launcher.
-2. Tap **中文** on the tile or in the full-screen view to switch to Chinese; tap **English** to return. The selected language is saved on the device.
+2. Tap the language marker on the tile to cycle through English, Chinese, Spanish, German, French, Japanese, and Korean. In the full-screen view, choose any language directly. The selected language is saved on the device.
 3. Use **My quota** to refresh the local account snapshot. Use **Check updates** to request the public monitor data; API cooldowns still apply.
 4. Select a calendar date to view cached events. Calendar navigation does not trigger a quota scan or API request.
 

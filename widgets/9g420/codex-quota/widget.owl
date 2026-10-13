@@ -1,10 +1,10 @@
-// Author: 9G420. MIT. bilingual edition.
+// Author: 9G420. MIT. Seven-language edition.
 // Self-contained Python sources; no helper downloads or account uploads.
 widget "Codex Quota and Resets" {
   size: 6x4
   minSize: 2x2
   padding: 10
-  meta { owl: 6; version: "2.0.1"; author: "9G420"; license: "MIT"; category: "dev"; description: "Resizable Codex quota card with reset countdowns, public Tibo announcements, statistics and a reset calendar. Green marks an unread reset update." }
+  meta { owl: 6; version: "2.1.0"; author: "9G420"; license: "MIT"; category: "dev"; description: "Seven-language Codex quota card with reset countdowns, Tibo announcements, statistics and a calendar." }
   requires { pacman: ["python"] }
 
   state refreshRequest = 0
@@ -624,6 +624,120 @@ if __name__ == '__main__':
   source tibo = cmd("python -I -c ${sh(resetScript)} --locale ${sh(language == "zh" ? "zh" : "en")} --refresh-request ${int(max(0, min(999999, num(refreshRequest, 0))))}") every 5m timeout 30s json
   source now = clock every 1m
 
+  let localeCodes = ["en", "zh", "es", "de", "fr", "ja", "ko"]
+  let languageIndex = max(0, indexOf(localeCodes, language))
+  let strings = {
+    unknown: ["Unknown", "未知", "Desconocido", "Unbekannt", "Inconnu", "不明", "알 수 없음"],
+    no_reset_time: ["No reset time", "没有重置时间", "Sin hora de reinicio", "Keine Reset-Zeit", "Pas d’heure de réinitialisation", "リセット時刻なし", "재설정 시간 없음"],
+    due_unconfirmed: ["Due · unconfirmed", "预计时间已到，尚未确认", "Vencido · sin confirmar", "Fällig · unbestätigt", "Échéance atteinte · non confirmé", "予定時刻経過・未確認", "예정 시각 지남 · 미확인"],
+    expected_reset: ["Expected reset ", "预计重置 ", "Reinicio previsto: ", "Erwarteter Reset: ", "Réinitialisation prévue : ", "予想リセット ", "예상 재설정 "],
+    days_prefix: ["", "还剩 ", "Quedan ", "Noch ", "Encore ", "残り", ""],
+    hours_prefix: ["", "还剩 ", "Quedan ", "Noch ", "Encore ", "残り", ""],
+    day_unit: ["d", "天", " d", " T", " j", "日", "일"],
+    hour_unit: ["h", "小时", " h", " Std.", " h", "時間", "시간"],
+    minute_unit: ["m", "分钟", " min", " Min.", " min", "分", "분"],
+    time_join: ["", " ", " ", " ", " ", "", " "],
+    time_left_suffix: [" left", "", " restantes", " übrig", " restantes", "", " 남음"],
+    time_until_suffix: [" until reset", "", " hasta el reinicio", " bis zum Reset", " avant la réinitialisation", "でリセット", " 후 재설정"],
+    choose_language: ["Choose language", "选择语言", "Elige un idioma", "Sprache auswählen", "Choisir la langue", "言語を選択", "언어 선택"],
+    notification_update: ["Tibo quota monitor update", "Tibo 额度监控更新", "Actualización del monitor de cuotas Tibo", "Tibo-Kontingentmonitor aktualisiert", "Mise à jour du suivi de quota Tibo", "Tibo 利用状況モニターの更新", "Tibo 할당량 모니터 업데이트"],
+    notification_five: ["Codex 5-hour quota", "Codex 5 小时额度", "Cuota de 5 horas de Codex", "Codex-5-Stundenkontingent", "Quota Codex sur 5 heures", "Codex 5時間の利用枠", "Codex 5시간 할당량"],
+    notification_week: ["Codex weekly quota", "Codex 周额度", "Cuota semanal de Codex", "Wöchentliches Codex-Kontingent", "Quota hebdomadaire Codex", "Codex 週間利用枠", "Codex 주간 할당량"],
+    notification_due: ["The estimated reset time has arrived. Check your account quota to confirm.", "预计重置时间已到，请查看最新账户额度确认是否恢复。", "Llegó la hora estimada del reinicio. Comprueba tu cuota para confirmarlo.", "Die geschätzte Reset-Zeit ist erreicht. Prüfe dein Kontingent zur Bestätigung.", "L’heure estimée est passée. Vérifiez votre quota pour confirmer.", "予想リセット時刻です。アカウントの利用枠で回復を確認してください。", "예상 재설정 시각입니다. 계정 할당량에서 복구 여부를 확인하세요."],
+    credits: ["Credits", "额度奖励", "Créditos", "Guthaben", "Crédits", "クレジット", "크레딧"],
+    quota_reset: ["Quota reset", "额度重置", "Reinicio de cuota", "Kontingent-Reset", "Réinitialisation du quota", "利用枠リセット", "할당량 재설정"],
+    announced: ["Announced", "已公布", "Anunciado", "Angekündigt", "Annoncé", "発表済み", "공지됨"],
+    unconfirmed: ["Unconfirmed", "尚未确认", "Sin confirmar", "Unbestätigt", "Non confirmé", "未確認", "미확인"],
+    source_schedule: ["Schedule stated in source: ", "原文提到的时间：", "Horario indicado en la fuente: ", "Zeitangabe aus der Quelle: ", "Horaire indiqué par la source : ", "出典に記載された時刻：", "출처에 표시된 일정: "],
+    original_post: ["Original post ↗", "查看原文 ↗", "Publicación original ↗", "Originalbeitrag ↗", "Publication d’origine ↗", "元の投稿 ↗", "원문 보기 ↗"],
+    five_hour: ["5-hour quota", "5 小时额度", "Cuota de 5 horas", "5-Stunden-Kontingent", "Quota sur 5 heures", "5時間の利用枠", "5시간 할당량"],
+    five_hour_short: ["5h", "5小时", "5 h", "5 Std.", "5 h", "5時間", "5시간"],
+    weekly: ["Weekly quota", "周额度", "Cuota semanal", "Wöchentliches Kontingent", "Quota hebdomadaire", "週間利用枠", "주간 할당량"],
+    weekly_short: ["Weekly", "周额度", "Semanal", "Woche", "Hebdo", "週間", "주간"],
+    stale_short: [" · stale", " · 延迟", " · atrasado", " · veraltet", " · retard", " · 遅延", " · 지연"],
+    delayed_prefix: ["Delayed · ", "数据延迟 · ", "Atrasado · ", "Verzögert · ", "En retard · ", "遅延 · ", "지연 · "],
+    monitor_delayed: ["Monitor delayed", "监控数据延迟", "Monitor atrasado", "Monitor verzögert", "Suivi en retard", "モニター遅延中", "모니터 지연"],
+    no_updates: ["No reset updates", "暂无重置动态", "Sin novedades de reinicio", "Keine Reset-Meldungen", "Aucune nouvelle de réinitialisation", "リセット情報なし", "재설정 소식 없음"],
+    monitor_unavailable: ["Monitor unavailable", "监控数据不可用", "Monitor no disponible", "Monitor nicht verfügbar", "Suivi indisponible", "モニター利用不可", "모니터 사용 불가"],
+    waiting_quota: ["Waiting for local quota records", "等待本地额度记录", "Esperando registros locales de cuota", "Warte auf lokale Kontingentdaten", "En attente des données locales du quota", "ローカル利用枠の記録を待機中", "로컬 할당량 기록 대기 중"],
+    quota_record: ["Quota record ", "额度记录 ", "Registro de cuota ", "Kontingentstand ", "Relevé du quota ", "利用枠の記録 ", "할당량 기록 "],
+    recorded_at: ["Recorded at ", "记录时间 ", "Registrado a las ", "Erfasst um ", "Enregistré à ", "記録時刻 ", "기록 시각 "],
+    stale_suffix: [" · delayed", " · 已延迟", " · atrasado", " · veraltet", " · retard", " · 遅延", " · 지연"],
+    reset_updates: ["Tibo reset updates", "Tibo 重置动态", "Reinicios Tibo", "Tibo-Resets", "Réinitialisations Tibo", "Tibo のリセット情報", "Tibo 재설정 소식"],
+    new_update: ["New update", "新动态", "Novedad", "Neu", "Nouveau", "新着", "새 소식"],
+    view: ["View ›", "查看 ›", "Ver ›", "Ansehen ›", "Voir ›", "表示 ›", "보기 ›"],
+    screen_title: ["Quota and Resets", "额度与重置", "Cuotas y reinicios", "Kontingent und Resets", "Quota et réinitialisations", "利用枠とリセット", "할당량 및 재설정"],
+    reset_monitor: ["Reset monitor", "重置监控", "Monitor de reinicios", "Reset-Monitor", "Suivi des réinitialisations", "リセット状況", "재설정 모니터"],
+    my_quota: ["My quota", "我的额度", "Mi cuota", "Mein Kontingent", "Mon quota", "自分の利用枠", "내 할당량"],
+    my_remaining: ["My remaining quota", "我的剩余额度", "Mi cuota restante", "Mein verbleibendes Kontingent", "Mon quota restant", "残りの利用枠", "남은 할당량"],
+    no_local_record: ["No local account record yet", "还没有本地账户记录", "Aún no hay registros locales de la cuenta", "Noch keine lokalen Kontodaten", "Aucun relevé local du compte", "ローカルアカウント記録はありません", "로컬 계정 기록이 없습니다"],
+    refresh_quota: ["Refresh local quota", "刷新本地额度", "Actualizar cuota local", "Lokales Kontingent aktualisieren", "Actualiser le quota local", "ローカル利用枠を更新", "로컬 할당량 새로고침"],
+    quota_explanation: ["Quota is read from local Codex session records. Countdown is an estimate; a new account record must confirm a refill.", "额度读取自本机 Codex 会话记录。倒计时仅供参考；需用新的账户记录确认额度已恢复。", "La cuota se lee de las sesiones locales de Codex. La cuenta atrás es estimada; un nuevo registro debe confirmar la recarga.", "Das Kontingent stammt aus lokalen Codex-Sitzungen. Der Countdown ist geschätzt; ein neuer Kontostand muss die Aufladung bestätigen.", "Le quota provient des sessions Codex locales. Le compte à rebours est estimé ; un nouveau relevé doit confirmer le rétablissement.", "利用枠は端末内の Codex セッション記録から取得します。残り時間は推定です。新しい記録で回復を確認してください。", "할당량은 로컬 Codex 세션 기록에서 읽습니다. 카운트다운은 예상치이며 새 기록으로 복구를 확인해야 합니다."],
+    recent_changes: ["Recent quota changes", "最近额度变化", "Cambios recientes de cuota", "Letzte Kontingentänderungen", "Changements récents du quota", "最近の利用枠の変化", "최근 할당량 변경"],
+    tibo_monitor: ["Tibo Reset Monitor", "Tibo 额度重置监控", "Monitor de reinicios de Tibo", "Tibo-Reset-Monitor", "Suivi des réinitialisations Tibo", "Tibo リセットモニター", "Tibo 재설정 모니터"],
+    check_updates: ["Check updates", "检查更新", "Buscar novedades", "Meldungen prüfen", "Vérifier les mises à jour", "更新を確認", "업데이트 확인"],
+    reset_credit_split: ["Reset events and credit announcements are counted separately. Calendar dates use Beijing time.", "确认重置与额度奖励分开统计；日历按北京时间。", "Los reinicios y los anuncios de créditos se cuentan por separado. El calendario usa la hora de Pekín.", "Resets und Guthabenmeldungen werden getrennt gezählt. Der Kalender verwendet Pekinger Zeit.", "Les réinitialisations et les annonces de crédits sont comptées séparément. Le calendrier utilise l’heure de Pékin.", "リセットとクレジット告知は別々に集計します。日付は北京時間です。", "재설정과 크레딧 공지는 따로 집계합니다. 달력은 베이징 시간 기준입니다."],
+    monitor_stale_cache: ["Monitor delayed; showing cached data", "监控更新延迟，正在显示缓存数据", "Monitor atrasado; se muestran los datos guardados", "Monitor verzögert; Cache wird angezeigt", "Suivi en retard ; affichage du cache", "モニター更新が遅れています。キャッシュを表示中", "모니터 지연 중 · 저장된 데이터 표시"],
+    monitor_current: ["Monitor data is current", "监控数据已更新", "Datos del monitor actualizados", "Monitordaten aktuell", "Données du suivi à jour", "モニターデータは最新です", "모니터 데이터 최신"],
+    no_public_events: ["No public events yet", "暂无公开事件", "Aún no hay eventos públicos", "Noch keine öffentlichen Ereignisse", "Aucun événement public", "公開イベントはありません", "공개 이벤트가 없습니다"],
+    latest_credits: ["Latest update: credits", "最新动态：额度奖励", "Última novedad: créditos", "Neueste Meldung: Guthaben", "Dernière actualité : crédits", "最新情報：クレジット", "최근 소식: 크레딧"],
+    reset_announced: ["Reset announced", "重置已公布", "Reinicio anunciado", "Reset angekündigt", "Réinitialisation annoncée", "リセット発表済み", "재설정 공지됨"],
+    reset_unconfirmed: ["Reset not confirmed", "重置尚未确认", "Reinicio sin confirmar", "Reset nicht bestätigt", "Réinitialisation non confirmée", "リセット未確認", "재설정 미확인"],
+    no_exact_reset: ["No exact reset time is published; forecasts are not promises.", "来源没有公布确切重置时间；预测不代表承诺。", "No se publicó una hora exacta; las previsiones no son promesas.", "Es wurde keine genaue Reset-Zeit veröffentlicht; Prognosen sind keine Zusagen.", "Aucune heure exacte n’est publiée ; les prévisions ne sont pas des promesses.", "正確なリセット時刻は未公表です。予測は確約ではありません。", "정확한 재설정 시각은 공개되지 않았으며 예측은 약속이 아닙니다."],
+    waiting_public: ["Waiting for a public reset update. Credit announcements do not count as account resets.", "等待公开重置动态。额度奖励不会被当作账户重置。", "Esperando novedades públicas. Los anuncios de créditos no cuentan como reinicios de cuenta.", "Warte auf öffentliche Meldungen. Guthabenankündigungen zählen nicht als Kontoreset.", "En attente d’une annonce publique. Les crédits ne comptent pas comme réinitialisation du compte.", "公開リセット情報を待機中です。クレジット告知はアカウントのリセットとして扱いません。", "공개 재설정 소식을 기다리는 중입니다. 크레딧 공지는 계정 재설정으로 계산하지 않습니다."],
+    resets_90: ["Announced resets in 90 days", "近 90 天已公布重置", "Reinicios anunciados en 90 días", "Angekündigte Resets in 90 Tagen", "Réinitialisations annoncées en 90 jours", "過去90日のリセット発表", "90일간 공지된 재설정"],
+    credits_90: ["Credits in 90 days", "近 90 天额度奖励", "Créditos en 90 días", "Guthaben in 90 Tagen", "Crédits en 90 jours", "過去90日のクレジット", "90일간 크레딧"],
+    median_interval: ["Median announced reset interval", "已公布重置间隔中位数", "Intervalo mediano entre reinicios anunciados", "Medianer Abstand angekündigter Resets", "Intervalle médian entre réinitialisations annoncées", "発表済みリセット間隔の中央値", "공지된 재설정 간격 중앙값"],
+    day_suffix: ["d", "天", " d", " T", " j", "日", "일"],
+    last_announced: ["Last announced reset", "最近已公布重置日期", "Último reinicio anunciado", "Letzter angekündigter Reset", "Dernière réinitialisation annoncée", "最後に発表されたリセット", "마지막 공지 재설정"],
+    reset_calendar: ["Reset calendar", "重置日历", "Calendario de reinicios", "Reset-Kalender", "Calendrier des réinitialisations", "リセットカレンダー", "재설정 달력"],
+    tap_date: ["Tap a date for events and source links", "点选日期查看事件与原始链接", "Toca una fecha para ver eventos y fuentes", "Datum antippen für Ereignisse und Quellen", "Touchez une date pour voir les événements et les sources", "日付をタップしてイベントと出典を表示", "날짜를 눌러 이벤트와 출처 링크 보기"],
+    this_month: ["This month: ", "本月：", "Este mes: ", "Diesen Monat: ", "Ce mois-ci : ", "今月：", "이번 달: "],
+    reset_count: [" resets", " 次重置", " reinicios", " Resets", " réinitialisations", "回のリセット", "회 재설정"],
+    credit_count: [" credits", " 次额度奖励", " créditos", " Guthaben", " crédits", "件のクレジット", "회 크레딧"],
+    legend: ["Green: announced reset · Blue: credits · Yellow: unconfirmed reset", "绿色：已公布重置 · 蓝色：额度奖励 · 黄色：未确认重置", "Verde: reinicio anunciado · Azul: créditos · Amarillo: sin confirmar", "Grün: Reset angekündigt · Blau: Guthaben · Gelb: unbestätigt", "Vert : réinitialisation annoncée · Bleu : crédits · Jaune : non confirmé", "緑：リセット発表済み · 青：クレジット · 黄：未確認リセット", "초록: 재설정 공지 · 파랑: 크레딧 · 노랑: 미확인 재설정"],
+    calendar_loading: ["Loading calendar data", "日历数据加载中", "Cargando el calendario", "Kalenderdaten werden geladen", "Chargement du calendrier", "カレンダーデータ読み込み中", "달력 데이터 불러오는 중"],
+    records_for: ["Records for ", " 的记录", "Registros del ", "Einträge für den ", "Événements du ", "", ""],
+    latest_reset: ["Latest reset", "最近重置", "Último reinicio", "Letzter Reset", "Dernière réinitialisation", "最新のリセット", "최근 재설정"],
+    no_records: ["No public records for this day", "这一天没有公开记录", "No hay registros públicos para este día", "Keine öffentlichen Einträge an diesem Tag", "Aucun enregistrement public ce jour-là", "この日の公開記録はありません", "이 날짜의 공개 기록이 없습니다"],
+    source_status: ["Source and monitor status", "来源与监控状态", "Fuente y estado del monitor", "Quelle und Monitorstatus", "Source et état du suivi", "出典とモニターの状態", "출처 및 모니터 상태"],
+    fetch_cached: ["Fetch failed or data is old · showing cache", "获取失败或数据过旧 · 显示最近缓存", "Error al obtener datos o datos antiguos · se muestra la caché", "Abruf fehlgeschlagen oder Daten veraltet · Cache wird angezeigt", "Échec de récupération ou données anciennes · cache affiché", "取得失敗またはデータが古いためキャッシュを表示", "가져오기 실패 또는 오래된 데이터 · 캐시 표시"],
+    cache_updated: ["Cache updated ", "缓存更新时间 ", "Caché actualizado ", "Cache aktualisiert ", "Cache mis à jour ", "キャッシュ更新 ", "캐시 업데이트 "],
+    api_data_time: [" · API data time ", " · 接口数据时间 ", " · datos de API ", " · API-Datenzeit ", " · date des données API ", " · APIデータ時刻 ", " · API 데이터 시각 "],
+    last_api_error: ["Last API error: ", "最近接口错误：", "Último error de API: ", "Letzter API-Fehler: ", "Dernière erreur API : ", "直近のAPIエラー：", "최근 API 오류: "],
+    disclaimer: ["Unofficial community widget; not affiliated with OpenAI, Tibo or Codex Reset. A credit announcement does not confirm a refill in your Codex account.", "非 OpenAI、Tibo 或 Codex Reset 官方组件。额度奖励公告不代表你的 Codex 账户已恢复额度。", "Widget comunitario no oficial; no está afiliado a OpenAI, Tibo ni Codex Reset. Un anuncio de créditos no confirma una recarga en tu cuenta de Codex.", "Inoffizielles Community-Widget; nicht mit OpenAI, Tibo oder Codex Reset verbunden. Eine Guthabenmeldung bestätigt keine Aufladung deines Codex-Kontos.", "Widget communautaire non officiel, sans lien avec OpenAI, Tibo ou Codex Reset. Une annonce de crédits ne confirme pas le rétablissement de votre quota Codex.", "非公式コミュニティウィジェットです。OpenAI、Tibo、Codex Resetとは関係ありません。クレジット告知はCodexアカウントの回復を示しません。", "비공식 커뮤니티 위젯이며 OpenAI, Tibo 또는 Codex Reset과 관련이 없습니다. 크레딧 공지는 Codex 계정의 충전을 확인하지 않습니다."],
+    source_credit: ["Data", "数据", "Datos", "Daten", "Source", "出典", "출처"]
+  }
+  let tr = key => get(strings, key, [key, key, key, key, key, key, key])[languageIndex]
+  let languageShort = language == "zh" ? "中" : language == "es" ? "ES" : language == "de" ? "DE" : language == "fr" ? "FR" : language == "ja" ? "日" : language == "ko" ? "한" : "EN"
+  let nextLanguage = language == "en" ? "zh" : language == "zh" ? "es" : language == "es" ? "de" : language == "de" ? "fr" : language == "fr" ? "ja" : language == "ja" ? "ko" : "en"
+  let languageOptions = [
+    { code: "en", label: "English" },
+    { code: "zh", label: "中文" },
+    { code: "es", label: "Español" },
+    { code: "de", label: "Deutsch" },
+    { code: "fr", label: "Français" },
+    { code: "ja", label: "日本語" },
+    { code: "ko", label: "한국어" }
+  ]
+  let weekdays = [
+    ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    ["一", "二", "三", "四", "五", "六", "日"],
+    ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"],
+    ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
+    ["lun", "mar", "mer", "jeu", "ven", "sam", "dim"],
+    ["月", "火", "水", "木", "金", "土", "日"],
+    ["월", "화", "수", "목", "금", "토", "일"]
+  ]
+  let monthNames = [
+    ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"],
+    ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"],
+    ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"],
+    ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"],
+    ["janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre"],
+    ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"],
+    ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"]
+  ]
   let secondary = alpha(foreground, 0.72)
   let quiet = alpha(foreground, 0.52)
   let panel = alpha(foreground, 0.055)
@@ -641,17 +755,15 @@ if __name__ == '__main__':
   when tibo.reset_key != null && ackResetKey == "" { ackResetKey = tibo.reset_key }
   when tibo.key != null && seenTibo == "" { seenTibo = tibo.key }
   on tibo.key {
-    notify(value != null && seenTibo != "" && value != seenTibo ? (language == "zh" ? "Tibo 额度监控更新" : "Tibo quota monitor update") : null, tibo.headline)
+    notify(value != null && seenTibo != "" && value != seenTibo ? tr("notification_update") : null, tibo.headline)
     seenTibo = value ?? seenTibo
   }
   at q.five.resets_at {
-    notify(q.five.resets_at != null && remindFive != q.five.resets_at ? (language == "zh" ? "Codex 5 小时额度" : "Codex 5-hour quota") : null,
-      language == "zh" ? "预计重置时间已到，请查看最新账户额度确认是否恢复。" : "The estimated reset time has arrived. Check your account quota to confirm.")
+    notify(q.five.resets_at != null && remindFive != q.five.resets_at ? tr("notification_five") : null, tr("notification_due"))
     remindFive = q.five.resets_at ?? remindFive
   }
   at q.week.resets_at {
-    notify(q.week.resets_at != null && remindWeek != q.week.resets_at ? (language == "zh" ? "Codex 周额度" : "Codex weekly quota") : null,
-      language == "zh" ? "预计重置时间已到，请查看最新账户额度确认是否恢复。" : "The estimated reset time has arrived. Check your account quota to confirm.")
+    notify(q.week.resets_at != null && remindWeek != q.week.resets_at ? tr("notification_week") : null, tr("notification_due"))
     remindWeek = q.week.resets_at ?? remindWeek
   }
 
@@ -672,7 +784,7 @@ if __name__ == '__main__':
       radius: 0
       Text { text: label; font: sans; fontSize: dense ? 12 : 14; color: secondary; maxLines: 1 }
       Text {
-        text: data.remaining == null ? (language == "zh" ? "未知" : "Unknown") : "${data.remaining}%"
+        text: data.remaining == null ? tr("unknown") : "${data.remaining}%"
         fontSize: dense ? 26 : 34
         bold: true
         color: data.remaining != null && data.remaining <= 15 ? #fb927d : foreground
@@ -683,14 +795,21 @@ if __name__ == '__main__':
       }
       let left = data.resets_at == null ? null : max(data.resets_at - now, 0)
       Text {
-        text: left == null ? (language == "zh" ? "没有重置时间" : "No reset time") : left <= 0 ? (language == "zh" ? "预计时间已到，尚未确认" : "Due · unconfirmed") : left >= 86400 ? (language == "zh" ? "还剩 ${floor(left / 86400)}天${floor(left % 86400 / 3600)}小时" : (dense ? "${floor(left / 86400)}d${floor(left % 86400 / 3600)}h left" : "${floor(left / 86400)}d${floor(left % 86400 / 3600)}h until reset")) : (language == "zh" ? "还剩 ${floor(left / 3600)}小时${floor(left % 3600 / 60)}分钟" : (dense ? "${floor(left / 3600)}h${floor(left % 3600 / 60)}m left" : "${floor(left / 3600)}h${floor(left % 3600 / 60)}m until reset"))
+        let secondsLeft = left ?? 0
+        let daysLeft = floor(secondsLeft / 86400)
+        let hoursLeft = floor(secondsLeft % 86400 / 3600)
+        let hoursOnly = floor(secondsLeft / 3600)
+        let minutesLeft = floor(secondsLeft % 3600 / 60)
+        let dayText = tr("days_prefix") + str(daysLeft) + tr("day_unit") + tr("time_join") + str(hoursLeft) + tr("hour_unit") + (dense ? tr("time_left_suffix") : tr("time_until_suffix"))
+        let hourText = tr("hours_prefix") + str(hoursOnly) + tr("hour_unit") + tr("time_join") + str(minutesLeft) + tr("minute_unit") + (dense ? tr("time_left_suffix") : tr("time_until_suffix"))
+        text: left == null ? tr("no_reset_time") : left <= 0 ? tr("due_unconfirmed") : left >= 86400 ? dayText : hourText
         font: sans
         fontSize: dense ? 10 : 12
         color: secondary
         maxLines: 1
       }
       if !dense && data.resets_at != null {
-        Text { text: language == "zh" ? "预计重置 ${fmtTime(data.resets_at, "MM-dd HH:mm")}" : "Expected ${fmtTime(data.resets_at, "MM-dd HH:mm")} reset"; font: sans; fontSize: 12; color: quiet; maxLines: 1 }
+        Text { text: tr("expected_reset") + fmtTime(data.resets_at, "MM-dd HH:mm"); font: sans; fontSize: 12; color: quiet; maxLines: 1 }
       }
     }
   }
@@ -716,18 +835,18 @@ if __name__ == '__main__':
           gap: 2
           weight: 1
           Text { text: "Tibo"; font: sans; fontSize: 15; bold: true; maxLines: 1 }
-          Text { text: item.group == "credits" ? (language == "zh" ? "额度奖励" : "Credits") : (language == "zh" ? "额度重置" : "Quota reset"); font: sans; fontSize: 11; color: secondary; maxLines: 1 }
+          Text { text: item.group == "credits" ? tr("credits") : tr("quota_reset"); font: sans; fontSize: 11; color: secondary; maxLines: 1 }
         }
-        Text { text: item.confirmed ? (language == "zh" ? "已公布" : "Announced") : (language == "zh" ? "尚未确认" : "Unconfirmed"); font: sans; fontSize: 12; color: item.confirmed ? #34d399 : #fbbf24; width: 100; align: end; maxLines: 2 }
+        Text { text: item.confirmed ? tr("announced") : tr("unconfirmed"); font: sans; fontSize: 12; color: item.confirmed ? #34d399 : #fbbf24; width: 100; align: end; maxLines: 2 }
       }
       Text { text: item.title; font: sans; fontSize: 17; bold: true; maxLines: 5 }
       if item.schedule != "" {
-        Text { text: (language == "zh" ? "原文提到的时间：" : "Schedule stated in source: ") + item.schedule; font: sans; fontSize: 13; color: #fbbf24; maxLines: 3 }
+        Text { text: tr("source_schedule") + item.schedule; font: sans; fontSize: 13; color: #fbbf24; maxLines: 3 }
       }
       Row {
         align: center
         Text { text: fmtTime(item.time, "MM-dd HH:mm"); fontSize: 12; color: secondary; weight: 1 }
-        if item.url != "" { Button { text: language == "zh" ? "查看原文 ↗" : "Original post ↗"; onTap: url(item.url) } }
+        if item.url != "" { Button { text: tr("original_post"); onTap: url(item.url) } }
       }
     }
   }
@@ -738,114 +857,125 @@ if __name__ == '__main__':
     Row {
       align: center
       Text { text: "Codex"; font: sans; fontSize: tight ? 12 : 14; bold: true; weight: 1; maxLines: 1 }
-      Button { text: language == "zh" ? "EN" : "中文"; onTap: language = language == "zh" ? "en" : "zh" }
+      Button { text: languageShort; onTap: language = nextLanguage }
       Lamp { lit: unreadReset; diameter: 9 }
     }
     if tight {
       for data, i in [q.five, q.week] {
         Row {
           align: center
-          Text { text: (i == 0 ? (language == "zh" ? "5小时" : "5h") : (language == "zh" ? "周额度" : "Weekly")) + (i == 0 && q.stale ? (language == "zh" ? " · 延迟" : " · stale") : ""); font: sans; fontSize: 10; color: secondary; weight: 1; maxLines: 1 }
+          Text { text: (i == 0 ? tr("five_hour_short") : tr("weekly_short")) + (i == 0 && q.stale ? tr("stale_short") : ""); font: sans; fontSize: 10; color: secondary; weight: 1; maxLines: 1 }
           Text { text: data.remaining == null ? "—" : "${data.remaining}%"; fontSize: 18; bold: true; width: 56; align: end; maxLines: 1 }
         }
       }
-      Text { text: monitorItem != null ? (tibo.stale ? ((language == "zh" ? "数据延迟 · " : "Delayed · ") + monitorItem.title) : monitorItem.title) : (tibo.stale ? (language == "zh" ? "监控数据延迟" : "Monitor delayed") : (language == "zh" ? "暂无重置动态" : "No reset updates")); font: sans; fontSize: 9; color: unreadReset ? #34d399 : secondary; maxLines: 1 }
-      Button { text: "Data: codex-reset.com"; onTap: url("https://codex-reset.com/") }
+      Text { text: monitorItem != null ? (tibo.stale ? (tr("delayed_prefix") + monitorItem.title) : monitorItem.title) : (tibo.stale ? tr("monitor_delayed") : tr("no_updates")); font: sans; fontSize: 9; color: unreadReset ? #34d399 : secondary; maxLines: 1 }
+      Button { text: tr("source_credit") + ": codex-reset.com"; onTap: url("https://codex-reset.com/") }
     } else {
       Row {
         gap: 8
-        Quota { label: language == "zh" ? "5 小时额度" : "5-hour quota"; data: q.five; dense: (rows ?? 3) < 4; weight: 1 }
-        Quota { label: language == "zh" ? "周额度" : "Weekly quota"; data: q.week; dense: (rows ?? 3) < 4; weight: 1 }
+        Quota { label: tr("five_hour"); data: q.five; dense: (rows ?? 3) < 4; weight: 1 }
+        Quota { label: tr("weekly"); data: q.week; dense: (rows ?? 3) < 4; weight: 1 }
       }
       Row {
         align: center
-        Text { text: language == "zh" ? "Tibo 重置动态" : "Tibo reset updates"; font: sans; fontSize: 12; bold: true; weight: 1; maxLines: 1 }
-        Text { text: unreadReset ? (language == "zh" ? "新动态" : "New update") : (language == "zh" ? "查看 ›" : "View ›"); font: sans; fontSize: 11; color: unreadReset ? #34d399 : secondary; width: 80; align: end; maxLines: 1 }
+        Text { text: tr("reset_updates"); font: sans; fontSize: 12; bold: true; weight: 1; maxLines: 1 }
+        Text { text: unreadReset ? tr("new_update") : tr("view"); font: sans; fontSize: 11; color: unreadReset ? #34d399 : secondary; width: 80; align: end; maxLines: 1 }
       }
-      Text { text: monitorItem != null ? (tibo.stale ? ((language == "zh" ? "数据延迟 · " : "Delayed · ") + monitorItem.title) : monitorItem.title) : (tibo.stale ? (language == "zh" ? "监控数据不可用" : "Monitor unavailable") : (language == "zh" ? "暂无重置动态" : "No reset updates")); font: sans; fontSize: 11; color: secondary; maxLines: 1 }
-      Text { text: q.updated_at == null ? (language == "zh" ? "等待本地额度记录" : "Waiting for local quota records") : (language == "zh" ? "额度记录 ${fmtTime(q.updated_at, "HH:mm")}${q.stale ? " · 已延迟" : ""}" : "Quota record ${fmtTime(q.updated_at, "HH:mm")}${q.stale ? " · delayed" : ""}"); font: sans; fontSize: 10; color: quiet; maxLines: 1 }
-      Button { text: "Data: codex-reset.com"; onTap: url("https://codex-reset.com/") }
+      Text { text: monitorItem != null ? (tibo.stale ? (tr("delayed_prefix") + monitorItem.title) : monitorItem.title) : (tibo.stale ? tr("monitor_unavailable") : tr("no_updates")); font: sans; fontSize: 11; color: secondary; maxLines: 1 }
+      Text { text: q.updated_at == null ? tr("waiting_quota") : tr("quota_record") + fmtTime(q.updated_at, "HH:mm") + (q.stale ? tr("stale_suffix") : ""); font: sans; fontSize: 10; color: quiet; maxLines: 1 }
+      Button { text: tr("source_credit") + ": codex-reset.com"; onTap: url("https://codex-reset.com/") }
     }
   }
 
   screen {
-    title: language == "zh" ? "Codex 额度与重置" : "Quota and Resets"
+    title: tr("screen_title")
     Column {
       scroll: true
       gap: 16
       Row {
         gap: 8
-        Button { text: language == "zh" ? "重置监控" : "Reset monitor"; color: tab == "monitor" ? foreground : secondary; onTap: tab = "monitor" }
-        Button { text: language == "zh" ? "我的额度" : "My quota"; color: tab == "account" ? foreground : secondary; onTap: tab = "account" }
+        Button { text: tr("reset_monitor"); color: tab == "monitor" ? foreground : secondary; onTap: tab = "monitor" }
+        Button { text: tr("my_quota"); color: tab == "account" ? foreground : secondary; onTap: tab = "account" }
         Spacer { weight: 1 }
-        Button { text: language == "zh" ? "English" : "中文"; onTap: language = language == "zh" ? "en" : "zh" }
+        Button { text: languageShort; onTap: language = nextLanguage }
+      }
+      Column {
+        gap: 6
+        Text { text: tr("choose_language"); font: sans; fontSize: 13; color: secondary }
+        Grid {
+          columns: 2
+          gap: 6
+          for option in languageOptions key option.code {
+            Button { text: option.label; color: language == option.code ? foreground : secondary; onTap: language = option.code }
+          }
+        }
       }
       if tab == "account" {
-        Text { text: language == "zh" ? "我的剩余额度" : "My remaining quota"; font: sans; fontSize: 22; bold: true }
+        Text { text: tr("my_remaining"); font: sans; fontSize: 22; bold: true }
         Row {
           gap: 12
-          Quota { label: language == "zh" ? "5 小时额度" : "5-hour quota"; data: q.five; weight: 1 }
-          Quota { label: language == "zh" ? "周额度" : "Weekly quota"; data: q.week; weight: 1 }
+          Quota { label: tr("five_hour"); data: q.five; weight: 1 }
+          Quota { label: tr("weekly"); data: q.week; weight: 1 }
         }
-        Text { text: q.updated_at == null ? (language == "zh" ? "还没有本地账户记录" : "No local account record yet") : (language == "zh" ? "记录时间 ${fmtTime(q.updated_at, "MM-dd HH:mm")}${q.stale ? " · 已延迟" : ""}" : "Recorded at ${fmtTime(q.updated_at, "MM-dd HH:mm")}${q.stale ? " · delayed" : ""}"); font: sans; fontSize: 13; color: secondary }
-        Button { text: language == "zh" ? "刷新本地额度" : "Refresh local quota"; onTap: refresh() }
-        Text { text: language == "zh" ? "额度来自本机 Codex 会话记录。倒计时仅为预计时间，需以新的账户记录确认额度恢复。" : "Quota is read from local Codex session records. Countdown is an estimate; a new account record must confirm a refill."; font: sans; fontSize: 13; color: secondary }
+        Text { text: q.updated_at == null ? tr("no_local_record") : tr("recorded_at") + fmtTime(q.updated_at, "MM-dd HH:mm") + (q.stale ? tr("stale_suffix") : ""); font: sans; fontSize: 13; color: secondary }
+        Button { text: tr("refresh_quota"); onTap: refresh() }
+        Text { text: tr("quota_explanation"); font: sans; fontSize: 13; color: secondary }
         if len(q.events) > 0 {
           Rule { }
-          Text { text: language == "zh" ? "最近额度变化" : "Recent quota changes"; font: sans; fontSize: 16; bold: true }
+          Text { text: tr("recent_changes"); font: sans; fontSize: 16; bold: true }
           for item in q.events key str(item.time) + item.kind {
-            Text { text: "${fmtTime(item.time, "MM-dd HH:mm")} · ${item.kind == "five" ? (language == "zh" ? "5 小时" : "5h") : (language == "zh" ? "周额度" : "Weekly")} · ${item.remaining}%"; fontSize: 13 }
+            Text { text: "${fmtTime(item.time, "MM-dd HH:mm")} · ${item.kind == "five" ? tr("five_hour_short") : tr("weekly_short")} · ${item.remaining}%"; fontSize: 13 }
           }
         }
       } else {
         Row {
           align: center
-          Text { text: language == "zh" ? "Tibo 额度重置监控" : "Tibo Reset Monitor"; font: sans; fontSize: 24; bold: true; weight: 1 }
-          Button { text: language == "zh" ? "检查更新" : "Check updates"; onTap: { refreshRequest = refreshRequest + 1; refresh() } }
+          Text { text: tr("tibo_monitor"); font: sans; fontSize: 24; bold: true; weight: 1 }
+          Button { text: tr("check_updates"); onTap: { refreshRequest = refreshRequest + 1; refresh() } }
         }
-        Text { text: language == "zh" ? "确认重置与额度奖励分开统计；日历按北京时间。" : "Reset events and credit announcements are counted separately. Calendar dates use Beijing time."; font: sans; fontSize: 13; color: secondary }
+        Text { text: tr("reset_credit_split"); font: sans; fontSize: 13; color: secondary }
         Column {
           gap: 8
           padding: 14
           background: panel
           radius: 0
-          Text { text: tibo.stale ? (language == "zh" ? "监控更新延迟，正在显示缓存数据" : "Monitor delayed; showing cached data") : (tibo.available ? (language == "zh" ? "监控数据已更新" : "Monitor data is current") : (language == "zh" ? "暂无公开事件" : "No public events yet")); font: sans; fontSize: 13; color: tibo.stale ? #fbbf24 : secondary; maxLines: 2 }
+          Text { text: tibo.stale ? tr("monitor_stale_cache") : (tibo.available ? tr("monitor_current") : tr("no_public_events")); font: sans; fontSize: 13; color: tibo.stale ? #fbbf24 : secondary; maxLines: 2 }
           if monitorItem != null {
-            Text { text: monitorItem.group == "credits" ? (language == "zh" ? "最新动态：额度奖励" : "Latest update: credits") : (monitorItem.confirmed ? (language == "zh" ? "重置已公布" : "Reset announced") : (language == "zh" ? "重置尚未确认" : "Reset not confirmed")); font: sans; fontSize: 13; color: monitorItem.confirmed ? #34d399 : #fbbf24; maxLines: 2 }
+            Text { text: monitorItem.group == "credits" ? tr("latest_credits") : (monitorItem.confirmed ? tr("reset_announced") : tr("reset_unconfirmed")); font: sans; fontSize: 13; color: monitorItem.confirmed ? #34d399 : #fbbf24; maxLines: 2 }
             Text { text: monitorItem.title; font: sans; fontSize: 20; bold: true; maxLines: 5 }
-            Text { text: monitorItem.schedule != "" ? ((language == "zh" ? "原文提到的时间：" : "Schedule stated in source: ") + monitorItem.schedule) : (language == "zh" ? "来源没有公布确切重置时间；预测不代表承诺。" : "No exact reset time is published; forecasts are not promises."); font: sans; fontSize: 12; color: secondary; maxLines: 3 }
+            Text { text: monitorItem.schedule != "" ? (tr("source_schedule") + monitorItem.schedule) : tr("no_exact_reset"); font: sans; fontSize: 12; color: secondary; maxLines: 3 }
           } else {
-            Text { text: language == "zh" ? "等待公开重置动态。额度奖励不会被当作账户重置。" : "Waiting for a public reset update. Credit announcements do not count as account resets."; font: sans; fontSize: 16; bold: true; maxLines: 3 }
+            Text { text: tr("waiting_public"); font: sans; fontSize: 16; bold: true; maxLines: 3 }
           }
         }
         if tibo.featured != null { Post { item: tibo.featured } }
         Grid {
           columns: 2
           gap: 10
-          Metric { label: language == "zh" ? "近 90 天已公布重置" : "Announced resets in 90 days"; value: tibo.stats.resets90 == null ? null : "${tibo.stats.resets90}" }
-          Metric { label: language == "zh" ? "近 90 天额度奖励" : "Credits in 90 days"; value: tibo.stats.credits90 == null ? null : "${tibo.stats.credits90}" }
-          Metric { label: language == "zh" ? "已公布重置间隔中位数" : "Median announced reset interval"; value: tibo.stats.medianIntervalDays == null ? null : (language == "zh" ? "${tibo.stats.medianIntervalDays} 天" : "${tibo.stats.medianIntervalDays}d") }
-          Metric { label: language == "zh" ? "最近已公布重置日期" : "Last announced reset"; value: tibo.stats.lastResetDate == null ? null : sub(tibo.stats.lastResetDate, 5, 10) }
+          Metric { label: tr("resets_90"); value: tibo.stats.resets90 == null ? null : "${tibo.stats.resets90}" }
+          Metric { label: tr("credits_90"); value: tibo.stats.credits90 == null ? null : "${tibo.stats.credits90}" }
+          Metric { label: tr("median_interval"); value: tibo.stats.medianIntervalDays == null ? null : str(tibo.stats.medianIntervalDays) + tr("day_suffix") }
+          Metric { label: tr("last_announced"); value: tibo.stats.lastResetDate == null ? null : sub(tibo.stats.lastResetDate, 5, 10) }
         }
         Rule { }
         Column {
           gap: 5
-          Text { text: language == "zh" ? "重置日历" : "Reset calendar"; font: sans; fontSize: 20; bold: true }
-          Text { text: language == "zh" ? "点选日期查看事件与原始链接" : "Tap a date for events and source links"; font: sans; fontSize: 12; color: secondary }
+          Text { text: tr("reset_calendar"); font: sans; fontSize: 20; bold: true }
+          Text { text: tr("tap_date"); font: sans; fontSize: 12; color: secondary }
         }
         if calendarMonth != null {
           Row {
             gap: 8
             align: center
             Button { text: "‹"; onTap: { monthOffset = max(monthOffset - 1, -24); selectedDate = "" } }
-            Text { text: language == "zh" ? calendarMonth.label_zh : calendarMonth.label_en; font: sans; fontSize: 16; bold: true; weight: 1; align: center; maxLines: 1 }
+            Text { text: (language == "zh" || language == "ja" || language == "ko") ? sub(calendarMonth.month, 0, 4) + (language == "zh" ? "年" : language == "ja" ? "年" : "년") + str(int(sub(calendarMonth.month, 5, 7))) + (language == "ko" ? "월" : "月") : monthNames[languageIndex][int(sub(calendarMonth.month, 5, 7)) - 1] + " " + sub(calendarMonth.month, 0, 4); font: sans; fontSize: 16; bold: true; weight: 1; align: center; maxLines: 1 }
             Button { text: "›"; onTap: { monthOffset = min(monthOffset + 1, 12); selectedDate = "" } }
           }
-          Text { text: language == "zh" ? "本月：${calendarMonth.reset_count} 次重置 · ${calendarMonth.credit_count} 次额度奖励" : "This month: ${calendarMonth.reset_count} resets · ${calendarMonth.credit_count} credits"; font: sans; fontSize: 12; color: secondary }
+          Text { text: tr("this_month") + str(calendarMonth.reset_count) + tr("reset_count") + " · " + str(calendarMonth.credit_count) + tr("credit_count"); font: sans; fontSize: 12; color: secondary }
           Grid {
             columns: 7
             gap: 4
-            for label in (language == "zh" ? ["一", "二", "三", "四", "五", "六", "日"] : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]) {
+            for label in weekdays[languageIndex] {
               Text { text: label; font: sans; fontSize: 12; color: secondary; align: center }
             }
           }
@@ -870,29 +1000,29 @@ if __name__ == '__main__':
               }
             }
           }
-          Text { text: language == "zh" ? "绿色：已公布重置 · 蓝色：额度奖励 · 黄色：未确认重置" : "Green: announced reset · Blue: credits · Yellow: unconfirmed reset"; font: sans; fontSize: 11; color: secondary }
+          Text { text: tr("legend"); font: sans; fontSize: 11; color: secondary }
         } else {
-          Text { text: language == "zh" ? "日历数据加载中" : "Loading calendar data"; font: sans; fontSize: 13; color: secondary }
+          Text { text: tr("calendar_loading"); font: sans; fontSize: 13; color: secondary }
         }
         Row {
           align: center
-          Text { text: language == "zh" ? "${activeDate} 的记录" : "Records for ${activeDate}"; font: sans; fontSize: 17; bold: true; weight: 1 }
-          Button { text: language == "zh" ? "最近重置" : "Latest reset"; onTap: { monthOffset = max(-24, min(12, num(tibo.stats.lastResetMonthOffset, 0))); selectedDate = tibo.stats.lastResetDate ?? tibo.today } }
+          Text { text: language == "zh" ? activeDate + " 的记录" : language == "ja" ? activeDate + " の記録" : language == "ko" ? activeDate + " 기록" : tr("records_for") + activeDate; font: sans; fontSize: 17; bold: true; weight: 1 }
+          Button { text: tr("latest_reset"); onTap: { monthOffset = max(-24, min(12, num(tibo.stats.lastResetMonthOffset, 0))); selectedDate = tibo.stats.lastResetDate ?? tibo.today } }
         }
         if len(selectedEntries) == 0 {
-          Text { text: language == "zh" ? "这一天没有公开记录" : "No public records for this day"; font: sans; fontSize: 14; color: secondary; padding: [0, 8] }
+          Text { text: tr("no_records"); font: sans; fontSize: 14; color: secondary; padding: [0, 8] }
         } else {
           for item in selectedEntries key item.id { Post { item: item } }
         }
         Rule { }
         Column {
           gap: 8
-          Text { text: language == "zh" ? "来源与监控状态" : "Source and monitor status"; font: sans; fontSize: 16; bold: true }
-          Text { text: tibo.stale ? (language == "zh" ? "获取失败或数据过旧 · 显示最近缓存" : "Fetch failed or data is old · showing cache") : (tibo.available ? (language == "zh" ? "监控正常" : "Monitor current") : (language == "zh" ? "暂无事件数据" : "No event data")); font: sans; fontSize: 13; color: tibo.stale ? #fbbf24 : secondary }
-          Text { text: (language == "zh" ? "缓存更新时间 " : "Cache updated ") + (tibo.fetched_at == null ? "—" : fmtTime(tibo.fetched_at, "MM-dd HH:mm")) + (language == "zh" ? " · 接口数据时间 " : " · API data time ") + (tibo.checked_at == null ? "—" : fmtTime(tibo.checked_at, "MM-dd HH:mm")); font: sans; fontSize: 12; color: secondary }
-          if tibo.error != "" { Text { text: (language == "zh" ? "最近接口错误：" : "Last API error: ") + tibo.error; font: sans; fontSize: 12; color: #fbbf24; maxLines: 2 } }
-          Text { text: language == "zh" ? "非 OpenAI、Tibo 或 Codex Reset 官方组件。额度奖励公告不代表你的 Codex 账户已恢复额度。" : "Unofficial community widget; not affiliated with OpenAI, Tibo or Codex Reset. A credit announcement does not confirm a refill in your Codex account."; font: sans; fontSize: 12; color: secondary; maxLines: 3 }
-          Button { text: "Data: codex-reset.com"; onTap: url("https://codex-reset.com/") }
+          Text { text: tr("source_status"); font: sans; fontSize: 16; bold: true }
+          Text { text: tibo.stale ? tr("fetch_cached") : (tibo.available ? tr("monitor_current") : tr("no_public_events")); font: sans; fontSize: 13; color: tibo.stale ? #fbbf24 : secondary }
+          Text { text: tr("cache_updated") + (tibo.fetched_at == null ? "—" : fmtTime(tibo.fetched_at, "MM-dd HH:mm")) + tr("api_data_time") + (tibo.checked_at == null ? "—" : fmtTime(tibo.checked_at, "MM-dd HH:mm")); font: sans; fontSize: 12; color: secondary }
+          if tibo.error != "" { Text { text: tr("last_api_error") + tibo.error; font: sans; fontSize: 12; color: #fbbf24; maxLines: 2 } }
+          Text { text: tr("disclaimer"); font: sans; fontSize: 12; color: secondary; maxLines: 3 }
+          Button { text: tr("source_credit") + ": codex-reset.com"; onTap: url("https://codex-reset.com/") }
         }
       }
     }
