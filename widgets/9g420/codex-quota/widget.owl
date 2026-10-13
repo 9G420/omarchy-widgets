@@ -793,14 +793,14 @@ if __name__ == '__main__':
         Progress { value: data.remaining; color: alpha(foreground, 0.75); track: alpha(foreground, 0.12); height: 3; fill: width }
       }
       let left = data.resets_at == null ? null : max(data.resets_at - now, 0)
+      let secondsLeft = left ?? 0
+      let daysLeft = floor(secondsLeft / 86400)
+      let hoursLeft = floor(secondsLeft % 86400 / 3600)
+      let hoursOnly = floor(secondsLeft / 3600)
+      let minutesLeft = floor(secondsLeft % 3600 / 60)
+      let dayText = strings.days_prefix[languageIndex] + str(daysLeft) + strings.day_unit[languageIndex] + strings.time_join[languageIndex] + str(hoursLeft) + strings.hour_unit[languageIndex] + (dense ? strings.time_left_suffix[languageIndex] : strings.time_until_suffix[languageIndex])
+      let hourText = strings.hours_prefix[languageIndex] + str(hoursOnly) + strings.hour_unit[languageIndex] + strings.time_join[languageIndex] + str(minutesLeft) + strings.minute_unit[languageIndex] + (dense ? strings.time_left_suffix[languageIndex] : strings.time_until_suffix[languageIndex])
       Text {
-        let secondsLeft = left ?? 0
-        let daysLeft = floor(secondsLeft / 86400)
-        let hoursLeft = floor(secondsLeft % 86400 / 3600)
-        let hoursOnly = floor(secondsLeft / 3600)
-        let minutesLeft = floor(secondsLeft % 3600 / 60)
-        let dayText = strings.days_prefix[languageIndex] + str(daysLeft) + strings.day_unit[languageIndex] + strings.time_join[languageIndex] + str(hoursLeft) + strings.hour_unit[languageIndex] + (dense ? strings.time_left_suffix[languageIndex] : strings.time_until_suffix[languageIndex])
-        let hourText = strings.hours_prefix[languageIndex] + str(hoursOnly) + strings.hour_unit[languageIndex] + strings.time_join[languageIndex] + str(minutesLeft) + strings.minute_unit[languageIndex] + (dense ? strings.time_left_suffix[languageIndex] : strings.time_until_suffix[languageIndex])
         text: left == null ? strings.no_reset_time[languageIndex] : left <= 0 ? strings.due_unconfirmed[languageIndex] : left >= 86400 ? dayText : hourText
         font: sans
         fontSize: dense ? 10 : 12
