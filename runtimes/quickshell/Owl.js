@@ -1637,7 +1637,7 @@ var KINDS = {
   Spacer: [[], "none"],
   Terminal: [["command", "fontSize"], "none"],
   Slider: [["value", "min", "max", "step", "color", "track", "live"], "none"],
-  Input: [["text", "placeholder", "color", "fontSize", "clear"], "none"]
+  Input: [["text", "placeholder", "color", "fontSize", "clear", "focus"], "none"]
 }
 var KIND_NAMES = Object.keys(KINDS)
 var COMMON = ["width", "height", "size", "fill", "weight", "padding", "background", "border", "borderColor",
@@ -1671,6 +1671,7 @@ var SINCE = { Terminal: 2, sprite: 3 }
 // owl 6: values in commands, quoted, and the launcher's corner style.
 SINCE.sh = 6
 SINCE.corners = 6
+SINCE["Input.focus"] = 6
 // owl 7: more of the phone: the next alarm, its modes, the torch, the share sheet, haptics.
 ;["android.alarm", "android.modes", "torch", "share", "haptic"].forEach(function(k) { SINCE[k] = 7 })
 
@@ -1768,6 +1769,8 @@ function Compiler(ast) {
   this.maxNodes = MAX_NODES
   this.screenAction = null
   this.needs = null
+  // Whether nodes being compiled are the screen's (true) or the tile's (false); null in components.
+  this.inScreen = null
 }
 
 function messageOf(e) {
@@ -1838,6 +1841,7 @@ Compiler.prototype = {
     var requires = this.requires(reqFields)
     var screens = body.items.filter(function(it) { return it.kind === "node" && it.type === "screen" })
     if (screens.length > 1) this.fail("a widget has one screen { }", screens[1].pos)
+    this.inScreen = false
     var rootNodes = this.items(body.items.filter(function(it) { return screens.indexOf(it) < 0 }), this.root, "ui")
     if (!rootNodes.length) this.fail("a widget needs at least one node, like Text { text: \"hi\" }", 0)
     var tileNodes = this.nodes
@@ -1888,6 +1892,7 @@ Compiler.prototype = {
     if (body.animations.length) this.fail("animate belongs inside a node", body.animations[0].pos)
     this.nodes = 0
     this.maxNodes = MAX_SCREEN_NODES
+    this.inScreen = true
     var tree = this.items(body.items, this.root, "ui")
     if (!tree.length) this.fail("a screen needs at least one node", n.pos)
     return [tree, body.props.length ? this.ex(body.props[0].value, this.root) : null]
@@ -2172,6 +2177,9 @@ Compiler.prototype = {
       if (kind[0].indexOf(p.name) < 0 && COMMON.indexOf(p.name) < 0)
         self.fail(n.type + " has no property '" + p.name + "' (" + kind[0].concat(COMMON).join(", ") + ")", p.pos)
       if (props.hasOwnProperty(p.name)) self.fail("'" + p.name + "' is set twice", p.pos)
+      // On a tile it would raise the keyboard whenever its page shows.
+      if (p.name === "focus" && self.inScreen === false) self.fail("focus only works in a screen { }", p.pos)
+      self.since(n.type + "." + p.name, p.pos)
       props[p.name] = self.prop(p, scope)
     })
     var handlers = {}
