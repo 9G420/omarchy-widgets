@@ -1,10 +1,10 @@
 // Author: 9G420. MIT. bilingual edition.
 // Self-contained Python sources; no helper downloads or account uploads.
 widget "Codex Quota and Resets" {
-  size: 6x3
+  size: 6x4
   minSize: 2x2
   padding: 10
-  meta { owl: 6; version: "2.0.0"; author: "9G420"; license: "MIT"; category: "dev"; description: "Resizable Codex quota card with reset countdowns, public Tibo announcements, statistics and a reset calendar. Green marks an unread reset update." }
+  meta { owl: 6; version: "2.0.1"; author: "9G420"; license: "MIT"; category: "dev"; description: "Resizable Codex quota card with reset countdowns, public Tibo announcements, statistics and a reset calendar. Green marks an unread reset update." }
   requires { pacman: ["python"] }
 
   state refreshRequest = 0
@@ -628,7 +628,7 @@ if __name__ == '__main__':
   let quiet = alpha(foreground, 0.52)
   let panel = alpha(foreground, 0.055)
   let unreadReset = tibo.reset_key != null && ackResetKey != "" && tibo.reset_key != ackResetKey
-  let tight = (cols ?? 3) < 3 || (rows ?? 3) < 3
+  let tight = (cols ?? 3) < 3 || (rows ?? 4) < 4
   let publicEvents = tibo.events ?? []
   let calendarMonths = tibo.calendars ?? []
   let monthIndex = floor(max(0, min(36, num(monthOffset, 0) + 24)))
@@ -760,7 +760,7 @@ if __name__ == '__main__':
       Row {
         align: center
         Text { text: language == "zh" ? "Tibo 重置动态" : "Tibo reset updates"; font: sans; fontSize: 12; bold: true; weight: 1; maxLines: 1 }
-        Text { text: unreadReset ? (language == "zh" ? "新动态" : "New update") : (language == "zh" ? "查看 ›" : "View ›"); font: sans; fontSize: 11; color: unreadReset ? #34d399 : secondary; maxLines: 1 }
+        Text { text: unreadReset ? (language == "zh" ? "新动态" : "New update") : (language == "zh" ? "查看 ›" : "View ›"); font: sans; fontSize: 11; color: unreadReset ? #34d399 : secondary; width: 80; align: end; maxLines: 1 }
       }
       Text { text: monitorItem != null ? (tibo.stale ? ((language == "zh" ? "数据延迟 · " : "Delayed · ") + monitorItem.title) : monitorItem.title) : (tibo.stale ? (language == "zh" ? "监控数据不可用" : "Monitor unavailable") : (language == "zh" ? "暂无重置动态" : "No reset updates")); font: sans; fontSize: 11; color: secondary; maxLines: 1 }
       Text { text: q.updated_at == null ? (language == "zh" ? "等待本地额度记录" : "Waiting for local quota records") : (language == "zh" ? "额度记录 ${fmtTime(q.updated_at, "HH:mm")}${q.stale ? " · 已延迟" : ""}" : "Quota record ${fmtTime(q.updated_at, "HH:mm")}${q.stale ? " · delayed" : ""}"); font: sans; fontSize: 10; color: quiet; maxLines: 1 }
