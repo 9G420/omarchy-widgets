@@ -1,0 +1,900 @@
+// Author: 9G420. MIT. bilingual edition.
+// Self-contained Python sources; no helper downloads or account uploads.
+widget "Codex Quota and Resets" {
+  size: 6x3
+  minSize: 2x2
+  padding: 10
+  meta { owl: 6; version: "2.0.0"; author: "9G420"; license: "MIT"; category: "dev"; description: "Resizable Codex quota card with reset countdowns, public Tibo announcements, statistics and a reset calendar. Green marks an unread reset update." }
+  requires { pacman: ["python"] }
+
+  state refreshRequest = 0
+  state selectedDate = ""
+  state monthOffset = 0
+  state tab = "monitor"
+  state ackResetKey = "" persist
+  state language = "en" persist
+  state seenTibo = "" persist
+  state remindFive = 0 persist
+  state remindWeek = 0 persist
+
+
+  source q = cmd("""python -I - <<'CODEX_QUOTA_PY'
+import argparse
+import datetime as dt
+import json
+import math
+from pathlib import Path
+import tempfile
+import time
+
+MAX_READ = 2 * 1024 * 1024
+
+
+def epoch(value):
+    try:
+        if not isinstance(value, str):
+            return None
+        parsed = dt.datetime.fromisoformat(value.replace('Z', '+00:00'))
+        if parsed.tzinfo is None:
+            return None
+        return int(parsed.timestamp())
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
+def valid_windows(raw):
+    if not isinstance(raw, dict):
+        return {}
+    result = {}
+    for name in ('five', 'week'):
+        value = raw.get(name)
+        if not isinstance(value, dict):
+            continue
+        remaining, resets_at = value.get('remaining'), value.get('resets_at')
+        if (isinstance(remaining, (int, float)) and not isinstance(remaining, bool)
+                and math.isfinite(remaining) and 0 <= remaining <= 100
+                and isinstance(resets_at, (int, float)) and not isinstance(resets_at, bool)
+                and math.isfinite(resets_at) and resets_at > 0):
+            result[name] = {'remaining': round(float(remaining), 1), 'resets_at': int(resets_at)}
+    return result
+
+
+def windows(limits):
+    if not isinstance(limits, dict):
+        return {}
+    result = {}
+    for slot in ('primary', 'secondary'):
+        window = limits.get(slot)
+        if not isinstance(window, dict):
+            continue
+        name = {300: 'five', 10080: 'week'}.get(window.get('window_minutes'))
+        used, reset = window.get('used_percent'), window.get('resets_at')
+        if (name and isinstance(used, (int, float)) and not isinstance(used, bool)
+                and math.isfinite(used) and 0 <= used <= 100
+                and isinstance(reset, (int, float)) and not isinstance(reset, bool)
+                and math.isfinite(reset) and reset > 0):
+            result[name] = {'remaining': round(100 - used, 1), 'resets_at': int(reset)}
+    return result
+
+
+def valid_snapshot(value):
+    if not isinstance(value, dict):
+        return None
+    stamp = value.get('updated_at')
+    if isinstance(stamp, bool) or not isinstance(stamp, (int, float)) or stamp <= 0:
+        return None
+    cleaned = valid_windows(value.get('windows'))
+    if not cleaned:
+        return None
+    return {'updated_at': int(stamp), 'windows': cleaned}
+
+
+def clean_events(raw):
+    if not isinstance(raw, list):
+        return []
+    result = []
+    for event in raw:
+        if not isinstance(event, dict) or event.get('kind') not in ('five', 'week'):
+            continue
+        stamp, remaining, reset = event.get('time'), event.get('remaining'), event.get('resets_at')
+        if (isinstance(stamp, bool) or not isinstance(stamp, int) or stamp <= 0
+                or isinstance(remaining, bool) or not isinstance(remaining, (int, float))
+                or not math.isfinite(remaining) or not 0 <= remaining <= 100
+                or isinstance(reset, bool) or not isinstance(reset, int) or reset <= 0):
+            continue
+        result.append({'kind': event['kind'], 'time': stamp,
+                       'remaining': round(float(remaining), 1), 'resets_at': reset})
+    return sorted(result, key=lambda item: item['time'], reverse=True)[:20]
+
+
+def load(path):
+    try:
+        value = json.loads(path.read_text(encoding='utf-8'))
+        if not isinstance(value, dict):
+            return {}
+        snapshot = valid_snapshot(value.get('snapshot'))
+        return {'snapshot': snapshot or {}, 'events': clean_events(value.get('events')),
+                'scan_marker': value.get('scan_marker'),
+                'source_file': value.get('source_file') if isinstance(value.get('source_file'), dict) else None}
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def migrate(cache_path):
+    candidates = []
+    for name in ('account-en.json', 'account-zh.json'):
+        old_path = cache_path.parent / name
+        try:
+            value = json.loads(old_path.read_text(encoding='utf-8'))
+            if not isinstance(value, dict):
+                continue
+            snapshot = valid_snapshot(value.get('snapshot'))
+            if snapshot:
+                candidates.append((snapshot['updated_at'], snapshot, clean_events(value.get('events'))))
+        except (OSError, ValueError, TypeError):
+            continue
+    if not candidates:
+        return {'snapshot': {}, 'events': [], 'scan_marker': None, 'source_file': None}
+    _, snapshot, events = max(candidates, key=lambda item: item[0])
+    return {'snapshot': snapshot, 'events': events, 'scan_marker': None, 'source_file': None}
+
+
+def save(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
+                                     prefix=path.name + '.', suffix='.tmp', delete=False) as output:
+        json.dump(value, output, ensure_ascii=False, separators=(',', ':'))
+        temporary = Path(output.name)
+    try:
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def file_marker(path, stat):
+    return {'path': str(path), 'mtime_ns': int(stat.st_mtime_ns), 'size': int(stat.st_size)}
+
+
+def candidates(root):
+    found = []
+    try:
+        for path in root.rglob('*.jsonl'):
+            try:
+                stat = path.stat()
+                if path.is_file():
+                    found.append((path, stat))
+            except OSError:
+                continue
+    except OSError:
+        pass
+    found.sort(key=lambda item: (item[1].st_mtime_ns, str(item[0])), reverse=True)
+    return found
+
+
+def snapshot_from_file(path, stat):
+    try:
+        with path.open('rb') as source:
+            start = max(0, stat.st_size - MAX_READ)
+            source.seek(start)
+            if start:
+                source.readline()
+            lines = source.read().splitlines()
+    except OSError:
+        return None
+    for line in reversed(lines):
+        if b'"token_count"' not in line or b'"rate_limits"' not in line:
+            continue
+        try:
+            event = json.loads(line)
+            if not isinstance(event, dict):
+                continue
+            payload = event.get('payload')
+            if not isinstance(payload, dict):
+                continue
+            limits = payload.get('rate_limits')
+            if (event.get('type') != 'event_msg' or payload.get('type') != 'token_count'
+                    or not isinstance(limits, dict) or limits.get('limit_id') not in (None, 'codex')):
+                continue
+            stamp = epoch(event.get('timestamp'))
+            data = windows(limits)
+            if stamp is not None and data:
+                return {'updated_at': stamp, 'windows': data}
+        except (ValueError, TypeError, AttributeError):
+            continue
+    return None
+
+
+def latest(sessions, saved):
+    files = candidates(sessions)
+    marker = file_marker(*files[0]) if files else None
+    previous = valid_snapshot(saved.get('snapshot'))
+    if marker == saved.get('scan_marker') and (previous or marker is None):
+        return None, marker, saved.get('source_file'), False
+    for path, stat in files:
+        snapshot = snapshot_from_file(path, stat)
+        if snapshot:
+            return snapshot, marker, file_marker(path, stat), True
+    return None, marker, saved.get('source_file'), True
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--sessions', type=Path, default=Path.home() / '.codex/sessions')
+    parser.add_argument('--cache', type=Path,
+                        default=Path.home() / '.cache/codex-quota-community/account.json')
+    parser.add_argument('--now', type=int, default=int(time.time()))
+    args = parser.parse_args()
+    old = load(args.cache)
+    migrated = False
+    if not old.get('snapshot'):
+        old = migrate(args.cache)
+        migrated = bool(old.get('snapshot'))
+    previous = valid_snapshot(old.get('snapshot')) or {}
+    events = clean_events(old.get('events'))
+    fresh, marker, source_file, scanned = latest(args.sessions, old)
+    snapshot = previous
+    if fresh and fresh['updated_at'] > previous.get('updated_at', -1):
+        for name, window in fresh['windows'].items():
+            prior = previous.get('windows', {}).get(name)
+            if (prior and window['resets_at'] > prior['resets_at']
+                    and fresh['updated_at'] >= prior['resets_at']):
+                events.insert(0, {'kind': name, 'time': fresh['updated_at'],
+                                  'remaining': window['remaining'], 'resets_at': window['resets_at']})
+        snapshot = fresh
+    if scanned or fresh or migrated:
+        try:
+            save(args.cache, {'snapshot': snapshot, 'events': events[:20],
+                              'scan_marker': marker, 'source_file': source_file})
+        except OSError:
+            pass
+    result = {'available': bool(snapshot.get('windows')), 'updated_at': snapshot.get('updated_at'),
+              'stale': bool(snapshot and args.now - snapshot.get('updated_at', 0) > 900),
+              'events': events[:20]}
+    for name in ('five', 'week'):
+        value = dict(snapshot.get('windows', {}).get(name) or {})
+        if not value:
+            value = {'remaining': None, 'resets_at': None, 'state': 'unknown'}
+        elif args.now >= value['resets_at']:
+            value.update(remaining=None, state='awaiting_reset')
+        else:
+            value['state'] = 'reported'
+        result[name] = value
+    print(json.dumps(result, ensure_ascii=False, separators=(',', ':')))
+
+
+if __name__ == '__main__':
+    main()
+CODEX_QUOTA_PY
+""") every 5m timeout 15s json
+  let resetScript = """import argparse
+import calendar
+import datetime as dt
+from email.utils import parsedate_to_datetime
+import json
+import re
+import statistics
+import tempfile
+import time
+from pathlib import Path
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
+from urllib.request import Request, urlopen
+
+BASE = 'https://codex-reset.com'
+USER_AGENT = 'codex-quota-widget/2.0 (+https://github.com/9G420/omarchy-widgets)'
+BEIJING = dt.timezone(dt.timedelta(hours=8))
+MAX_RESPONSE = 2 * 1024 * 1024
+POLL_SECONDS = 300
+MIN_REQUEST_GAP = 60
+MONTH_NAMES = ('January', 'February', 'March', 'April', 'May', 'June',
+               'July', 'August', 'September', 'October', 'November', 'December')
+
+
+class ApiFailure(Exception):
+    def __init__(self, message, retry_after=0):
+        super().__init__(message)
+        self.retry_after = retry_after
+
+
+def timestamp(value):
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(value.replace('Z', '+00:00'))
+        if parsed.tzinfo is None:
+            return None
+        return int(parsed.timestamp())
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
+def safe_url(value):
+    if not isinstance(value, str) or len(value) > 2048:
+        return ''
+    try:
+        parsed = urlsplit(value)
+        if (parsed.scheme.lower() != 'https' or not parsed.hostname
+                or parsed.username is not None or parsed.password is not None
+                or any(ord(ch) < 32 or ch.isspace() for ch in value)):
+            return ''
+        if parsed.port is not None and not 1 <= parsed.port <= 65535:
+            return ''
+        return value
+    except ValueError:
+        return ''
+
+
+def retry_delay(value, now):
+    if not value:
+        return MIN_REQUEST_GAP
+    try:
+        return max(MIN_REQUEST_GAP, int(value.strip()))
+    except (ValueError, AttributeError):
+        try:
+            parsed = parsedate_to_datetime(value)
+            return max(MIN_REQUEST_GAP, int(parsed.timestamp() - now))
+        except (TypeError, ValueError, OverflowError):
+            return MIN_REQUEST_GAP
+
+
+def get_json(path, locale):
+    suffix = '?locale=zh' if locale == 'zh' else ''
+    request = Request(BASE + path + suffix, headers={
+        'User-Agent': USER_AGENT,
+        'Accept': 'application/json',
+    }, method='GET')
+    try:
+        with urlopen(request, timeout=12) as response:
+            body = response.read(MAX_RESPONSE + 1)
+        if len(body) > MAX_RESPONSE:
+            raise ApiFailure('API response exceeded 2 MiB')
+        value = json.loads(body.decode('utf-8'))
+        if not isinstance(value, dict):
+            raise ApiFailure('API response was not a JSON object')
+        return value
+    except HTTPError as error:
+        delay = retry_delay(error.headers.get('Retry-After') if error.headers else None, time.time()) if error.code == 429 else 0
+        raise ApiFailure('HTTP ' + str(error.code), delay) from error
+    except (URLError, TimeoutError, UnicodeDecodeError, json.JSONDecodeError, OSError) as error:
+        raise ApiFailure(type(error).__name__) from error
+
+
+def valid_feed(value):
+    return (isinstance(value, dict)
+            and isinstance(value.get('tweets'), list)
+            and isinstance(value.get('events'), list)
+            and 'signal' in value
+            and isinstance(value.get('stale'), bool)
+            and timestamp(value.get('fetched_at')) is not None)
+
+
+def valid_timeline(value):
+    return isinstance(value, dict) and isinstance(value.get('events'), list)
+
+
+def load(path):
+    try:
+        value = json.loads(path.read_text(encoding='utf-8'))
+        if (isinstance(value, dict) and value.get('schema') == 2
+                and valid_feed(value.get('feed')) and valid_timeline(value.get('timeline'))):
+            return value
+        if (isinstance(value, dict) and value.get('schema') == 2
+                and value.get('feed') == {} and value.get('timeline') == {}):
+            return value
+    except (OSError, ValueError, TypeError):
+        pass
+    return {}
+
+
+def save(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
+                                     prefix=path.name + '.', suffix='.tmp', delete=False) as output:
+        json.dump(value, output, ensure_ascii=False, separators=(',', ':'))
+        temporary = Path(output.name)
+    try:
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def stated_schedule(summary):
+    if not isinstance(summary, str):
+        return ''
+    if re.search(r'\b(?:promis\w*|expect\w*|schedul\w*|announc\w*)\b', summary, re.I):
+        match = re.search(
+            r'\b(?:by|at|around|before|after|for)\s+'
+            r'(?:EOD(?:\s+(?:PST|PDT|PT|UTC))?|end of day(?:\s+(?:PST|PDT|PT|UTC))?|'
+            r'tomorrow\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?(?:\s*(?:PST|PDT|PT|UTC))?|'
+            r'\d{1,2}(?::\d{2})?\s*(?:am|pm)?\s*(?:PST|PDT|PT|UTC))\b',
+            summary, re.I)
+        if match:
+            return match.group(0)
+    if re.search(r'承诺|预计|计划|宣布|安排|将于', summary):
+        match = re.search(
+            r'(?:承诺|预计|计划|宣布|安排|将于)[^。；，,]{0,50}?'
+            r'((?:今天|明天|当天|当日)?\s*(?:北京时间)?\d{1,2}(?:[:：]\d{2})?\s*'
+            r'(?:点|时)?\s*(?:上午|下午|晚上|凌晨)?\s*(?:UTC|PST|PDT|PT)?'
+            r'(?:之前|左右|前后|截止)?)',
+            summary)
+        if match:
+            return match.group(1).strip()
+    return ''
+
+
+def normalize_events(raw_events, locale):
+    unique = {}
+    for raw in raw_events:
+        if not isinstance(raw, dict):
+            continue
+        event_id = raw.get('id')
+        if isinstance(event_id, bool) or not isinstance(event_id, (str, int)):
+            continue
+        event_id = str(event_id).strip()
+        group = raw.get('group')
+        if not event_id or len(event_id) > 128 or group not in ('reset', 'credits'):
+            continue
+        announced = timestamp(raw.get('announced_at'))
+        summary = raw.get('summary')
+        state = raw.get('announcement_state')
+        event_type = raw.get('type')
+        if announced is None or not isinstance(summary, str) or not summary.strip():
+            continue
+        if not isinstance(state, str):
+            state = 'unknown'
+        if not isinstance(event_type, str):
+            event_type = group
+        local_date = dt.datetime.fromtimestamp(announced, BEIJING).date().isoformat()
+        normalized = {
+            'id': event_id,
+            'time': announced,
+            'date': local_date,
+            'group': group,
+            'type': event_type[:80],
+            'state': state[:80],
+            'confirmed': group == 'reset' and state == 'announced',
+            'title': summary.strip()[:5000],
+            'schedule': stated_schedule(summary),
+            'url': safe_url(raw.get('url')),
+        }
+        previous = unique.get(event_id)
+        if previous is None or announced > previous['time']:
+            unique[event_id] = normalized
+    result = list(unique.values())
+    result.sort(key=lambda item: item['time'], reverse=True)
+    return result
+
+
+def month_shift(year, month, offset):
+    index = year * 12 + month - 1 + offset
+    shifted_year, shifted_month = divmod(index, 12)
+    return shifted_year, shifted_month + 1
+
+
+def calendar_data(events, today):
+    year, month = today.year, today.month
+    by_date = {}
+    for event in events:
+        by_date.setdefault(event['date'], []).append(event)
+    output = []
+    for offset in range(-24, 13):
+        y, m = month_shift(year, month, offset)
+        month_prefix = f'{y:04d}-{m:02d}'
+        month_events = [e for e in events if e['date'].startswith(month_prefix)]
+        cells = []
+        for week in calendar.Calendar(firstweekday=0).monthdatescalendar(y, m):
+            for date in week:
+                items = by_date.get(date.isoformat(), [])
+                cells.append({
+                    'date': date.isoformat(),
+                    'day': date.day,
+                    'in_month': date.month == m,
+                    'today': date == today,
+                    'reset': any(e['group'] == 'reset' for e in items),
+                    'confirmed_reset': any(e['confirmed'] for e in items),
+                    'pending_reset': any(e['group'] == 'reset' and not e['confirmed'] for e in items),
+                    'credit': any(e['group'] == 'credits' for e in items),
+                })
+        output.append({
+            'month': month_prefix,
+            'label_en': MONTH_NAMES[m - 1] + ' ' + str(y),
+            'label_zh': f'{y}年{m}月',
+            'cells': cells,
+            'reset_count': sum(e['confirmed'] for e in month_events),
+            'credit_count': sum(e['group'] == 'credits' for e in month_events),
+        })
+    return output
+
+
+def make_result(saved, now, locale):
+    feed = saved.get('feed') if isinstance(saved.get('feed'), dict) else {}
+    timeline = saved.get('timeline') if isinstance(saved.get('timeline'), dict) else {}
+    events = normalize_events(timeline.get('events', []), locale)
+    today = dt.datetime.fromtimestamp(now, BEIJING).date()
+    confirmed = [e for e in events if e['confirmed']]
+    reset_dates = sorted({e['date'] for e in confirmed})
+    cutoff = (today - dt.timedelta(days=89)).isoformat()
+    resets_90 = sum(e['confirmed'] and e['date'] >= cutoff for e in events)
+    credits_90 = sum(e['group'] == 'credits' and e['date'] >= cutoff for e in events)
+    intervals = []
+    for older, newer in zip(reset_dates, reset_dates[1:]):
+        intervals.append((dt.date.fromisoformat(newer) - dt.date.fromisoformat(older)).days)
+    median = statistics.median(intervals) if intervals else None
+    last_reset_date = reset_dates[-1] if reset_dates else None
+    latest_reset = next((e for e in events if e['group'] == 'reset'), None)
+    featured = events[0] if events else None
+    api_fetched = timestamp(feed.get('fetched_at'))
+    cache_fetched = int(saved.get('fetched_at', 0) or 0)
+    stale = (not saved.get('fetch_ok', False)
+             or feed.get('stale') is True
+             or not cache_fetched
+             or now - cache_fetched > 1800)
+    error = saved.get('error', '')
+    return {
+        'available': bool(events),
+        'stale': stale,
+        'error': error if isinstance(error, str) else '',
+        'language': locale,
+        'fetched_at': cache_fetched or None,
+        'checked_at': api_fetched,
+        'newest_post_at': timestamp(feed.get('newest_post_at')),
+        'feed_stale': feed.get('stale') is True,
+        'monitor_label': ('Delayed / stale' if stale else 'Monitor current'),
+        'summary': latest_reset['title'] if latest_reset else '',
+        'headline': featured['title'] if featured else 'No recorded updates',
+        'key': (featured['id'] + ':' + str(featured['time']) + ':' + featured['state']) if featured else None,
+        'reset_key': next((e['id'] for e in confirmed), None),
+        'latest': latest_reset,
+        'featured': featured,
+        'events': events,
+        'today': today.isoformat(),
+        'calendars': calendar_data(events, today),
+        'stats': {
+            'resets90': resets_90,
+            'credits90': credits_90,
+            'medianIntervalDays': median,
+            'lastResetDate': last_reset_date,
+            'lastResetMonthOffset': (
+                (dt.date.fromisoformat(last_reset_date).year - today.year) * 12
+                + dt.date.fromisoformat(last_reset_date).month - today.month
+            ) if last_reset_date else None,
+        },
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--cache', type=Path,
+                        default=Path.home() / '.cache/codex-quota-community/codex-reset-v2.json')
+    parser.add_argument('--locale', choices=('en', 'zh'), default='en')
+    parser.add_argument('--refresh-request', type=int, default=0)
+    args = parser.parse_args()
+    now = int(time.time())
+    cache_path = args.cache
+    saved = load(cache_path)
+    saved.setdefault('schema', 2)
+    saved.setdefault('fetch_ok', False)
+    saved.setdefault('attempted_at', 0)
+    saved.setdefault('last_attempt_at', 0)
+    saved.setdefault('retry_after_until', 0)
+    saved.setdefault('refresh_request', -1)
+    saved.setdefault('error', '')
+    saved.setdefault('feed', {})
+    saved.setdefault('timeline', {})
+    due = (not saved.get('fetch_ok')
+           or now - int(saved.get('attempted_at', 0) or 0) >= POLL_SECONDS
+           or args.refresh_request != saved.get('refresh_request', -1)
+           or args.locale != saved.get('locale', ''))
+    retry_until = max(int(saved.get('retry_after_until', 0) or 0),
+                      int(saved.get('last_attempt_at', 0) or 0) + MIN_REQUEST_GAP)
+    if due and now >= retry_until:
+        saved['attempted_at'] = now
+        saved['last_attempt_at'] = now
+        saved['refresh_request'] = args.refresh_request
+        try:
+            feed = get_json('/api/feed', args.locale)
+            timeline = get_json('/api/timeline', args.locale)
+            if not valid_feed(feed):
+                raise ApiFailure('Invalid feed response')
+            if not valid_timeline(timeline):
+                raise ApiFailure('Invalid timeline response')
+            saved.update(feed=feed, timeline=timeline, fetched_at=now, fetch_ok=True,
+                         locale=args.locale, retry_after_until=0, error='')
+        except ApiFailure as error:
+            saved['fetch_ok'] = False
+            saved['error'] = str(error)[:160]
+            if error.retry_after:
+                saved['retry_after_until'] = now + error.retry_after
+        except Exception as error:
+            saved['fetch_ok'] = False
+            saved['error'] = type(error).__name__
+        try:
+            save(cache_path, saved)
+        except OSError:
+            pass
+    elif due:
+        saved['refresh_request'] = args.refresh_request
+    print(json.dumps(make_result(saved, now, args.locale), ensure_ascii=False,
+                     separators=(',', ':')))
+
+
+if __name__ == '__main__':
+    main()
+"""
+  source tibo = cmd("python -I -c ${sh(resetScript)} --locale ${sh(language == "zh" ? "zh" : "en")} --refresh-request ${int(max(0, min(999999, num(refreshRequest, 0))))}") every 5m timeout 30s json
+  source now = clock every 1m
+
+  let secondary = alpha(foreground, 0.72)
+  let quiet = alpha(foreground, 0.52)
+  let panel = alpha(foreground, 0.055)
+  let unreadReset = tibo.reset_key != null && ackResetKey != "" && tibo.reset_key != ackResetKey
+  let tight = (cols ?? 3) < 3 || (rows ?? 3) < 3
+  let publicEvents = tibo.events ?? []
+  let calendarMonths = tibo.calendars ?? []
+  let monthIndex = floor(max(0, min(36, num(monthOffset, 0) + 24)))
+  let calendarMonth = calendarMonths[monthIndex]
+  let activeDate = selectedDate == "" ? tibo.today : selectedDate
+  let selectedEntries = publicEvents.filter(event => event.date == activeDate)
+  let latestReset = tibo.latest
+  let monitorItem = latestReset ?? tibo.featured
+
+  when tibo.reset_key != null && ackResetKey == "" { ackResetKey = tibo.reset_key }
+  when tibo.key != null && seenTibo == "" { seenTibo = tibo.key }
+  on tibo.key {
+    notify(value != null && seenTibo != "" && value != seenTibo ? (language == "zh" ? "Tibo 额度监控更新" : "Tibo quota monitor update") : null, tibo.headline)
+    seenTibo = value ?? seenTibo
+  }
+  at q.five.resets_at {
+    notify(q.five.resets_at != null && remindFive != q.five.resets_at ? (language == "zh" ? "Codex 5 小时额度" : "Codex 5-hour quota") : null,
+      language == "zh" ? "预计重置时间已到，请查看最新账户额度确认是否恢复。" : "The estimated reset time has arrived. Check your account quota to confirm.")
+    remindFive = q.five.resets_at ?? remindFive
+  }
+  at q.week.resets_at {
+    notify(q.week.resets_at != null && remindWeek != q.week.resets_at ? (language == "zh" ? "Codex 周额度" : "Codex weekly quota") : null,
+      language == "zh" ? "预计重置时间已到，请查看最新账户额度确认是否恢复。" : "The estimated reset time has arrived. Check your account quota to confirm.")
+    remindWeek = q.week.resets_at ?? remindWeek
+  }
+
+  onTap: { ackResetKey = tibo.reset_key ?? ackResetKey; screen() }
+
+  component Lamp(lit, diameter = 10) {
+    Canvas {
+      size: diameter
+      circle(width / 2, height / 2, min(width, height) / 2, fill: lit ? #34d399 : alpha(foreground, 0.22))
+    }
+  }
+  component Rule() { Spacer { height: 1; fill: width; background: alpha(foreground, 0.12) } }
+  component Quota(label, data, dense = false) {
+    Column {
+      gap: dense ? 3 : 5
+      padding: dense ? 8 : 14
+      background: panel
+      radius: 0
+      Text { text: label; font: sans; fontSize: dense ? 12 : 14; color: secondary; maxLines: 1 }
+      Text {
+        text: data.remaining == null ? (language == "zh" ? "未知" : "Unknown") : "${data.remaining}%"
+        fontSize: dense ? 26 : 34
+        bold: true
+        color: data.remaining != null && data.remaining <= 15 ? #fb927d : foreground
+        maxLines: 1
+      }
+      if data.remaining != null {
+        Progress { value: data.remaining; color: alpha(foreground, 0.75); track: alpha(foreground, 0.12); height: 3; fill: width }
+      }
+      let left = data.resets_at == null ? null : max(data.resets_at - now, 0)
+      Text {
+        text: left == null ? (language == "zh" ? "没有重置时间" : "No reset time") : left <= 0 ? (language == "zh" ? "预计时间已到，尚未确认" : "Due · unconfirmed") : left >= 86400 ? (language == "zh" ? "还剩 ${floor(left / 86400)}天${floor(left % 86400 / 3600)}小时" : (dense ? "${floor(left / 86400)}d${floor(left % 86400 / 3600)}h left" : "${floor(left / 86400)}d${floor(left % 86400 / 3600)}h until reset")) : (language == "zh" ? "还剩 ${floor(left / 3600)}小时${floor(left % 3600 / 60)}分钟" : (dense ? "${floor(left / 3600)}h${floor(left % 3600 / 60)}m left" : "${floor(left / 3600)}h${floor(left % 3600 / 60)}m until reset"))
+        font: sans
+        fontSize: dense ? 10 : 12
+        color: secondary
+        maxLines: 1
+      }
+      if !dense && data.resets_at != null {
+        Text { text: language == "zh" ? "预计重置 ${fmtTime(data.resets_at, "MM-dd HH:mm")}" : "Expected ${fmtTime(data.resets_at, "MM-dd HH:mm")} reset"; font: sans; fontSize: 12; color: quiet; maxLines: 1 }
+      }
+    }
+  }
+  component Metric(label, value) {
+    Column {
+      gap: 6
+      padding: 12
+      background: panel
+      radius: 0
+      Text { text: label; font: sans; fontSize: 12; color: secondary; maxLines: 2 }
+      Text { text: value ?? "—"; fontSize: 24; bold: true; maxLines: 1 }
+    }
+  }
+  component Post(item) {
+    Column {
+      gap: 10
+      padding: 14
+      background: panel
+      radius: 0
+      Row {
+        align: center
+        Column {
+          gap: 2
+          weight: 1
+          Text { text: "Tibo"; font: sans; fontSize: 15; bold: true; maxLines: 1 }
+          Text { text: item.group == "credits" ? (language == "zh" ? "额度奖励" : "Credits") : (language == "zh" ? "额度重置" : "Quota reset"); font: sans; fontSize: 11; color: secondary; maxLines: 1 }
+        }
+        Text { text: item.confirmed ? (language == "zh" ? "已公布" : "Announced") : (language == "zh" ? "尚未确认" : "Unconfirmed"); font: sans; fontSize: 12; color: item.confirmed ? #34d399 : #fbbf24; width: 100; align: end; maxLines: 2 }
+      }
+      Text { text: item.title; font: sans; fontSize: 17; bold: true; maxLines: 5 }
+      if item.schedule != "" {
+        Text { text: (language == "zh" ? "原文提到的时间：" : "Schedule stated in source: ") + item.schedule; font: sans; fontSize: 13; color: #fbbf24; maxLines: 3 }
+      }
+      Row {
+        align: center
+        Text { text: fmtTime(item.time, "MM-dd HH:mm"); fontSize: 12; color: secondary; weight: 1 }
+        if item.url != "" { Button { text: language == "zh" ? "查看原文 ↗" : "Original post ↗"; onTap: url(item.url) } }
+      }
+    }
+  }
+
+  Column {
+    gap: tight ? 2 : 8
+    padding: tight ? 6 : 10
+    Row {
+      align: center
+      Text { text: "Codex"; font: sans; fontSize: tight ? 12 : 14; bold: true; weight: 1; maxLines: 1 }
+      Button { text: language == "zh" ? "EN" : "中文"; onTap: language = language == "zh" ? "en" : "zh" }
+      Lamp { lit: unreadReset; diameter: 9 }
+    }
+    if tight {
+      for data, i in [q.five, q.week] {
+        Row {
+          align: center
+          Text { text: (i == 0 ? (language == "zh" ? "5小时" : "5h") : (language == "zh" ? "周额度" : "Weekly")) + (i == 0 && q.stale ? (language == "zh" ? " · 延迟" : " · stale") : ""); font: sans; fontSize: 10; color: secondary; weight: 1; maxLines: 1 }
+          Text { text: data.remaining == null ? "—" : "${data.remaining}%"; fontSize: 18; bold: true; width: 56; align: end; maxLines: 1 }
+        }
+      }
+      Text { text: monitorItem != null ? (tibo.stale ? ((language == "zh" ? "数据延迟 · " : "Delayed · ") + monitorItem.title) : monitorItem.title) : (tibo.stale ? (language == "zh" ? "监控数据延迟" : "Monitor delayed") : (language == "zh" ? "暂无重置动态" : "No reset updates")); font: sans; fontSize: 9; color: unreadReset ? #34d399 : secondary; maxLines: 1 }
+      Button { text: "Data: codex-reset.com"; onTap: url("https://codex-reset.com/") }
+    } else {
+      Row {
+        gap: 8
+        Quota { label: language == "zh" ? "5 小时额度" : "5-hour quota"; data: q.five; dense: (rows ?? 3) < 4; weight: 1 }
+        Quota { label: language == "zh" ? "周额度" : "Weekly quota"; data: q.week; dense: (rows ?? 3) < 4; weight: 1 }
+      }
+      Row {
+        align: center
+        Text { text: language == "zh" ? "Tibo 重置动态" : "Tibo reset updates"; font: sans; fontSize: 12; bold: true; weight: 1; maxLines: 1 }
+        Text { text: unreadReset ? (language == "zh" ? "新动态" : "New update") : (language == "zh" ? "查看 ›" : "View ›"); font: sans; fontSize: 11; color: unreadReset ? #34d399 : secondary; maxLines: 1 }
+      }
+      Text { text: monitorItem != null ? (tibo.stale ? ((language == "zh" ? "数据延迟 · " : "Delayed · ") + monitorItem.title) : monitorItem.title) : (tibo.stale ? (language == "zh" ? "监控数据不可用" : "Monitor unavailable") : (language == "zh" ? "暂无重置动态" : "No reset updates")); font: sans; fontSize: 11; color: secondary; maxLines: 1 }
+      Text { text: q.updated_at == null ? (language == "zh" ? "等待本地额度记录" : "Waiting for local quota records") : (language == "zh" ? "额度记录 ${fmtTime(q.updated_at, "HH:mm")}${q.stale ? " · 已延迟" : ""}" : "Quota record ${fmtTime(q.updated_at, "HH:mm")}${q.stale ? " · delayed" : ""}"); font: sans; fontSize: 10; color: quiet; maxLines: 1 }
+      Button { text: "Data: codex-reset.com"; onTap: url("https://codex-reset.com/") }
+    }
+  }
+
+  screen {
+    title: language == "zh" ? "Codex 额度与重置" : "Quota and Resets"
+    Column {
+      scroll: true
+      gap: 16
+      Row {
+        gap: 8
+        Button { text: language == "zh" ? "重置监控" : "Reset monitor"; color: tab == "monitor" ? foreground : secondary; onTap: tab = "monitor" }
+        Button { text: language == "zh" ? "我的额度" : "My quota"; color: tab == "account" ? foreground : secondary; onTap: tab = "account" }
+        Spacer { weight: 1 }
+        Button { text: language == "zh" ? "English" : "中文"; onTap: language = language == "zh" ? "en" : "zh" }
+      }
+      if tab == "account" {
+        Text { text: language == "zh" ? "我的剩余额度" : "My remaining quota"; font: sans; fontSize: 22; bold: true }
+        Row {
+          gap: 12
+          Quota { label: language == "zh" ? "5 小时额度" : "5-hour quota"; data: q.five; weight: 1 }
+          Quota { label: language == "zh" ? "周额度" : "Weekly quota"; data: q.week; weight: 1 }
+        }
+        Text { text: q.updated_at == null ? (language == "zh" ? "还没有本地账户记录" : "No local account record yet") : (language == "zh" ? "记录时间 ${fmtTime(q.updated_at, "MM-dd HH:mm")}${q.stale ? " · 已延迟" : ""}" : "Recorded at ${fmtTime(q.updated_at, "MM-dd HH:mm")}${q.stale ? " · delayed" : ""}"); font: sans; fontSize: 13; color: secondary }
+        Button { text: language == "zh" ? "刷新本地额度" : "Refresh local quota"; onTap: refresh() }
+        Text { text: language == "zh" ? "额度来自本机 Codex 会话记录。倒计时仅为预计时间，需以新的账户记录确认额度恢复。" : "Quota is read from local Codex session records. Countdown is an estimate; a new account record must confirm a refill."; font: sans; fontSize: 13; color: secondary }
+        if len(q.events) > 0 {
+          Rule { }
+          Text { text: language == "zh" ? "最近额度变化" : "Recent quota changes"; font: sans; fontSize: 16; bold: true }
+          for item in q.events key str(item.time) + item.kind {
+            Text { text: "${fmtTime(item.time, "MM-dd HH:mm")} · ${item.kind == "five" ? (language == "zh" ? "5 小时" : "5h") : (language == "zh" ? "周额度" : "Weekly")} · ${item.remaining}%"; fontSize: 13 }
+          }
+        }
+      } else {
+        Row {
+          align: center
+          Text { text: language == "zh" ? "Tibo 额度重置监控" : "Tibo Reset Monitor"; font: sans; fontSize: 24; bold: true; weight: 1 }
+          Button { text: language == "zh" ? "检查更新" : "Check updates"; onTap: { refreshRequest = refreshRequest + 1; refresh() } }
+        }
+        Text { text: language == "zh" ? "确认重置与额度奖励分开统计；日历按北京时间。" : "Reset events and credit announcements are counted separately. Calendar dates use Beijing time."; font: sans; fontSize: 13; color: secondary }
+        Column {
+          gap: 8
+          padding: 14
+          background: panel
+          radius: 0
+          Text { text: tibo.stale ? (language == "zh" ? "监控更新延迟，正在显示缓存数据" : "Monitor delayed; showing cached data") : (tibo.available ? (language == "zh" ? "监控数据已更新" : "Monitor data is current") : (language == "zh" ? "暂无公开事件" : "No public events yet")); font: sans; fontSize: 13; color: tibo.stale ? #fbbf24 : secondary; maxLines: 2 }
+          if monitorItem != null {
+            Text { text: monitorItem.group == "credits" ? (language == "zh" ? "最新动态：额度奖励" : "Latest update: credits") : (monitorItem.confirmed ? (language == "zh" ? "重置已公布" : "Reset announced") : (language == "zh" ? "重置尚未确认" : "Reset not confirmed")); font: sans; fontSize: 13; color: monitorItem.confirmed ? #34d399 : #fbbf24; maxLines: 2 }
+            Text { text: monitorItem.title; font: sans; fontSize: 20; bold: true; maxLines: 5 }
+            Text { text: monitorItem.schedule != "" ? ((language == "zh" ? "原文提到的时间：" : "Schedule stated in source: ") + monitorItem.schedule) : (language == "zh" ? "来源没有公布确切重置时间；预测不代表承诺。" : "No exact reset time is published; forecasts are not promises."); font: sans; fontSize: 12; color: secondary; maxLines: 3 }
+          } else {
+            Text { text: language == "zh" ? "等待公开重置动态。额度奖励不会被当作账户重置。" : "Waiting for a public reset update. Credit announcements do not count as account resets."; font: sans; fontSize: 16; bold: true; maxLines: 3 }
+          }
+        }
+        if tibo.featured != null { Post { item: tibo.featured } }
+        Grid {
+          columns: 2
+          gap: 10
+          Metric { label: language == "zh" ? "近 90 天已公布重置" : "Announced resets in 90 days"; value: tibo.stats.resets90 == null ? null : "${tibo.stats.resets90}" }
+          Metric { label: language == "zh" ? "近 90 天额度奖励" : "Credits in 90 days"; value: tibo.stats.credits90 == null ? null : "${tibo.stats.credits90}" }
+          Metric { label: language == "zh" ? "已公布重置间隔中位数" : "Median announced reset interval"; value: tibo.stats.medianIntervalDays == null ? null : (language == "zh" ? "${tibo.stats.medianIntervalDays} 天" : "${tibo.stats.medianIntervalDays}d") }
+          Metric { label: language == "zh" ? "最近已公布重置日期" : "Last announced reset"; value: tibo.stats.lastResetDate == null ? null : sub(tibo.stats.lastResetDate, 5, 10) }
+        }
+        Rule { }
+        Column {
+          gap: 5
+          Text { text: language == "zh" ? "重置日历" : "Reset calendar"; font: sans; fontSize: 20; bold: true }
+          Text { text: language == "zh" ? "点选日期查看事件与原始链接" : "Tap a date for events and source links"; font: sans; fontSize: 12; color: secondary }
+        }
+        if calendarMonth != null {
+          Row {
+            gap: 8
+            align: center
+            Button { text: "‹"; onTap: { monthOffset = max(monthOffset - 1, -24); selectedDate = "" } }
+            Text { text: language == "zh" ? calendarMonth.label_zh : calendarMonth.label_en; font: sans; fontSize: 16; bold: true; weight: 1; align: center; maxLines: 1 }
+            Button { text: "›"; onTap: { monthOffset = min(monthOffset + 1, 12); selectedDate = "" } }
+          }
+          Text { text: language == "zh" ? "本月：${calendarMonth.reset_count} 次重置 · ${calendarMonth.credit_count} 次额度奖励" : "This month: ${calendarMonth.reset_count} resets · ${calendarMonth.credit_count} credits"; font: sans; fontSize: 12; color: secondary }
+          Grid {
+            columns: 7
+            gap: 4
+            for label in (language == "zh" ? ["一", "二", "三", "四", "五", "六", "日"] : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]) {
+              Text { text: label; font: sans; fontSize: 12; color: secondary; align: center }
+            }
+          }
+          Grid {
+            columns: 7
+            gap: 4
+            for day in calendarMonth.cells key day.date {
+              Column {
+                gap: 4
+                padding: [0, 7]
+                background: day.date == activeDate ? alpha(foreground, 0.16) : day.in_month ? panel : transparent
+                radius: 0
+                onTap: { selectedDate = day.date }
+                Text { text: day.day; fontSize: 14; bold: day.today; color: day.in_month ? foreground : quiet; align: center; maxLines: 1 }
+                Canvas {
+                  height: 5
+                  fill: width
+                  if day.confirmed_reset { circle(width / 2 - (day.pending_reset || day.credit ? 7 : 0), height / 2, 1.7, fill: #34d399) }
+                  if day.pending_reset { circle(width / 2, height / 2, 1.7, fill: #fbbf24) }
+                  if day.credit { circle(width / 2 + (day.reset ? 7 : 0), height / 2, 1.7, fill: #60a5fa) }
+                }
+              }
+            }
+          }
+          Text { text: language == "zh" ? "绿色：已公布重置 · 蓝色：额度奖励 · 黄色：未确认重置" : "Green: announced reset · Blue: credits · Yellow: unconfirmed reset"; font: sans; fontSize: 11; color: secondary }
+        } else {
+          Text { text: language == "zh" ? "日历数据加载中" : "Loading calendar data"; font: sans; fontSize: 13; color: secondary }
+        }
+        Row {
+          align: center
+          Text { text: language == "zh" ? "${activeDate} 的记录" : "Records for ${activeDate}"; font: sans; fontSize: 17; bold: true; weight: 1 }
+          Button { text: language == "zh" ? "最近重置" : "Latest reset"; onTap: { monthOffset = max(-24, min(12, num(tibo.stats.lastResetMonthOffset, 0))); selectedDate = tibo.stats.lastResetDate ?? tibo.today } }
+        }
+        if len(selectedEntries) == 0 {
+          Text { text: language == "zh" ? "这一天没有公开记录" : "No public records for this day"; font: sans; fontSize: 14; color: secondary; padding: [0, 8] }
+        } else {
+          for item in selectedEntries key item.id { Post { item: item } }
+        }
+        Rule { }
+        Column {
+          gap: 8
+          Text { text: language == "zh" ? "来源与监控状态" : "Source and monitor status"; font: sans; fontSize: 16; bold: true }
+          Text { text: tibo.stale ? (language == "zh" ? "获取失败或数据过旧 · 显示最近缓存" : "Fetch failed or data is old · showing cache") : (tibo.available ? (language == "zh" ? "监控正常" : "Monitor current") : (language == "zh" ? "暂无事件数据" : "No event data")); font: sans; fontSize: 13; color: tibo.stale ? #fbbf24 : secondary }
+          Text { text: (language == "zh" ? "缓存更新时间 " : "Cache updated ") + (tibo.fetched_at == null ? "—" : fmtTime(tibo.fetched_at, "MM-dd HH:mm")) + (language == "zh" ? " · 接口数据时间 " : " · API data time ") + (tibo.checked_at == null ? "—" : fmtTime(tibo.checked_at, "MM-dd HH:mm")); font: sans; fontSize: 12; color: secondary }
+          if tibo.error != "" { Text { text: (language == "zh" ? "最近接口错误：" : "Last API error: ") + tibo.error; font: sans; fontSize: 12; color: #fbbf24; maxLines: 2 } }
+          Text { text: language == "zh" ? "非 OpenAI、Tibo 或 Codex Reset 官方组件。额度奖励公告不代表你的 Codex 账户已恢复额度。" : "Unofficial community widget; not affiliated with OpenAI, Tibo or Codex Reset. A credit announcement does not confirm a refill in your Codex account."; font: sans; fontSize: 12; color: secondary; maxLines: 3 }
+          Button { text: "Data: codex-reset.com"; onTap: url("https://codex-reset.com/") }
+        }
+      }
+    }
+  }
+}
