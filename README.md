@@ -1,6 +1,6 @@
 # omarchy widgets
 
-The widget store for [omarchy-proot](https://github.com/SimonSchubert), the Android launcher that
+The widget store for [Omalauncher](https://github.com/SimonSchubert/omalauncher), the Android launcher that
 runs Arch Linux and draws home-screen widgets written in OWL, a small declarative widget language.
 
 Everything in `widgets/` has been reviewed. When a pull request is merged, CI builds `index.json`
