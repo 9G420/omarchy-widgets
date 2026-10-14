@@ -3,13 +3,13 @@ widget "kagi" {
   order: 3
   size: 4x1
   minSize: 3x1
-  meta { description: "A Kagi search bar: tap it, type a query and results open in the browser, with live Kagi autosuggest."; version: "1.0"; license: "MIT"; category: "productivity"; owl: 6 }
+  meta { description: "A Kagi search bar: tap it, type a query and results open in the browser, with live Kagi autosuggest."; version: "1.1"; license: "MIT"; category: "productivity"; owl: 6 }
 
   // What's typed; kept only for the open screen.
   state q = ""
 
   // The query, percent-encoded so it can't break the URL. Empty means no suggestions yet.
-  let qq = q.replace("%", "%25").replace("&", "%26").replace("#", "%23").replace("'", "%27").replace(" ", "+")
+  let qq = q.replace("%", "%25").replace("+", "%2B").replace("&", "%26").replace("#", "%23").replace("'", "%27").replace(" ", "+")
 
   // Kagi's own autosuggest; onChange refreshes the source the moment q changes.
   source sug = http("https://kagi.com/api/autosuggest?q=${qq}") every 5m json
@@ -59,7 +59,7 @@ widget "kagi" {
               gap: 12
               align: center
               padding: [12, 11]
-              onTap: { url("https://kagi.com/search?q=" + replace(s, " ", "+")); q = ""; close() }
+              onTap: { url("https://kagi.com/search?q=" + s.replace("%", "%25").replace("+", "%2B").replace("&", "%26").replace("#", "%23").replace("'", "%27").replace(" ", "+")); q = ""; close() }
               Canvas {
                 width: 16
                 height: 16
