@@ -928,7 +928,7 @@ if __name__ == '__main__':
         Row {
           align: center
           Text { text: q.updated_at == null ? strings.waiting_quota[languageIndex] : strings.quota_record[languageIndex] + fmtTime(q.updated_at, "HH:mm") + (q.stale ? strings.stale_suffix[languageIndex] : ""); font: sans; fontSize: 9; color: quiet; weight: 1; maxLines: 1 }
-          Text { text: "codex-reset.com"; font: sans; fontSize: 9; color: quiet; align: end; onTap: url("https://codex-reset.com/") }
+          Text { text: "codex-reset.com"; font: sans; width: 80; fontSize: 9; color: quiet; align: end; onTap: url("https://codex-reset.com/") }
         }
       } else if wide {
         Row {
@@ -957,7 +957,7 @@ if __name__ == '__main__':
         Row {
           align: center
           Text { text: q.updated_at == null ? strings.waiting_quota[languageIndex] : strings.quota_record[languageIndex] + fmtTime(q.updated_at, "HH:mm") + (q.stale ? strings.stale_suffix[languageIndex] : ""); font: sans; fontSize: 9; color: quiet; weight: 1; maxLines: 1 }
-          Text { text: "codex-reset.com"; font: sans; fontSize: 9; color: quiet; align: end; onTap: url("https://codex-reset.com/") }
+          Text { text: "codex-reset.com"; font: sans; width: 80; fontSize: 9; color: quiet; align: end; onTap: url("https://codex-reset.com/") }
         }
       }
     } else {
@@ -976,7 +976,7 @@ if __name__ == '__main__':
         Row {
           align: center
           Text { text: q.updated_at == null ? strings.waiting_quota[languageIndex] : strings.quota_record[languageIndex] + fmtTime(q.updated_at, "HH:mm") + (q.stale ? strings.stale_suffix[languageIndex] : ""); font: sans; fontSize: 9; color: quiet; weight: 1; maxLines: 1 }
-          Text { text: "codex-reset.com"; font: sans; fontSize: 9; color: quiet; align: end; onTap: url("https://codex-reset.com/") }
+          Text { text: "codex-reset.com"; font: sans; width: 80; fontSize: 9; color: quiet; align: end; onTap: url("https://codex-reset.com/") }
         }
       } else {
         Text { text: q.updated_at == null ? strings.waiting_quota[languageIndex] : strings.quota_record[languageIndex] + fmtTime(q.updated_at, "HH:mm") + (q.stale ? strings.stale_suffix[languageIndex] : ""); font: sans; fontSize: 10; color: quiet; maxLines: 1 }
