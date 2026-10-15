@@ -3,7 +3,7 @@ widget "DEV LOGS" {
   order: 2
   size: 3x4
   minSize: 2x2
-  meta { owl: 6; description: "Dev logs, Markdown project files and Linux diagnostics. Your coding agent writes log entries, explains errors and fixes them in a terminal."; version: "2.0"; license: "MIT"; category: "productivity" }
+  meta { owl: 6; description: "Dev logs, Markdown project files and Linux diagnostics. Your coding agent writes log entries, explains errors and fixes them in a terminal."; version: "2.0.1"; license: "MIT"; category: "productivity" }
   requires { pacman: ["python", "bash", "coreutils", "less", "micro"] }
   state language = "en" persist
   let zh = language == "zh"
@@ -393,8 +393,10 @@ Use DEV LOGS to log important development progress for this project. Save these 
                     if ask.status == "failed" {
                       Text { text: ask.error ?? ""; style: small; color: red }
                       if ask.raw != null && ask.raw != "" { Text { text: ask.raw; style: small; font: mono; maxLines: 8 } }
-                    } else {
+                    } else if agent.batch {
                       Text { text: zh ? "Agent 先用白話說明問題，再分析原因並提出修復建議；分析只讀，不會修改任何檔案。" : "The agent explains the problem in plain words, then finds the cause and suggests a fix. Analysis is read-only and changes nothing."; style: small; color: muted }
+                    } else {
+                      Text { text: zh ? "Agent 先用白話說明問題，再分析原因並提出修復建議。它在終端以平常的權限執行，只是被要求不要修改任何東西。" : "The agent explains the problem in plain words, then finds the cause and suggests a fix. It runs in a terminal with its usual permissions and is only asked not to change anything."; style: small; color: muted }
                     }
                     if agent.batch {
                       Button { text: zh ? "Agent 分析" : "Analyze with agent"; fill: width; onTap: { agentMsg = run("python ~/.local/share/oma-devlogs/agent_help.py analyze ${int(entry.id)} ${sh(language)} 2>&1"); refresh() } }
