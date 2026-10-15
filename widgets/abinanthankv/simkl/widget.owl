@@ -3,7 +3,7 @@ widget "simkl" {
   order: 15
   size: 6x4
   minSize: 3x4
-  meta { owl: 6; description: "Your next week of TV, anime and movies from Simkl: tile, posters and full screen. Tap login, approve the code on simkl.com, done"; version: "1.2"; license: "MIT"; category: "time" }
+  meta { owl: 6; description: "Your next week of TV, anime and movies from Simkl: tile, posters and full screen. Tap login, approve the code on simkl.com, done"; version: "1.3"; license: "MIT"; category: "time" }
   requires { pacman: ["python", "curl"] }
 
   let clientId = "95a4064f1187b0dd4846827dbbf0268d12ea8cec58ca89e323021f87eda269ed"
@@ -424,6 +424,10 @@ echo ok
   // then drops the pending code. It's detached from run()'s 30s cap, so the tile
   // switches over via the device.json/token file sources as soon as they change.
   let logged = trim(tok ?? "") != ""
+  // Signing in happens in the background, so fetch the shows as soon as the token appears.
+  // null while the file is still loading, so opening the widget fetches only once.
+  let signedIn = tok == null ? null : trim(tok) != ""
+  on signedIn { refresh() }
   let loading = up == null
   let items = up ?? []
   let code = dev.user_code ?? ""

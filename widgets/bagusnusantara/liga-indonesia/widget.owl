@@ -1,5 +1,5 @@
 widget "persik kediri" {
-  meta { owl: 5; description: "Persik Kediri di Super League Indonesia: posisi, form, laga berikutnya dan klasemen, dari FotMob"; version: "2.0"; license: "MIT"; category: "world" }
+  meta { owl: 5; description: "Persik Kediri di Super League Indonesia: posisi, form, laga berikutnya dan klasemen, dari FotMob"; version: "2.1"; license: "MIT"; category: "world" }
   size: 6x5
   minSize: 3x3
 
@@ -34,7 +34,10 @@ widget "persik kediri" {
                (.s | split(" - ") | map(tonumber? // 0)) as $g
                | ((if .home then $g[0] - $g[1] else $g[1] - $g[0] end)) as $diff
                | . + {res: (if $diff > 0 then "W" elif $diff < 0 then "L" else "D" end)}
-             else . end))}' > "$d/data.json" || exit 1
+             else . end))}' > "$d/data.tmp"
+    # jq exits 0 on empty input, so keep the last good copy unless this one has data.
+    [ -s "$d/data.tmp" ] && mv -f "$d/data.tmp" "$d/data.json"
+    [ -s "$d/data.json" ] || exit 1
     for i in $(jq -r '.table[].id' "$d/data.json"); do
       [ -s "$d/$i.png" ] || curl -fs -m 10 -o "$d/$i.png" "https://images.fotmob.com/image_resources/logo/teamlogo/$i"_small.png &
     done; wait
