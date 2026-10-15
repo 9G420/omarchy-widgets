@@ -4,7 +4,7 @@ widget "wallpapers" {
   size: 3x3
   minSize: 2x2
   padding: 0
-  meta { description: "Pick the home screen's wallpaper: the theme's own, every Omarchy background, open community art from OpenDesktop and Wikimedia Commons photos"; version: "3.1"; license: "MIT"; category: "home"; owl: 7 }
+  meta { description: "Pick the home screen's wallpaper: the theme's own, every Omarchy background, open community art from OpenDesktop and Wikimedia Commons photos"; version: "3.1"; license: "MIT"; category: "system"; owl: 7 }
   requires { pacman: ["python", "python-pillow"] }
 
   // The helper is written out by this command, in full and fixed, so this file is all the widget needs and a
