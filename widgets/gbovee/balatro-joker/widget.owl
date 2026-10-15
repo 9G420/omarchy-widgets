@@ -1,5 +1,5 @@
 widget "balatro joker" {
-  meta { description: "A random Joker from Balatro with its effect, cost and rarity. Tap for another"; version: "1.0"; license: "MIT"; category: "fun" }
+  meta { description: "A random Joker from Balatro with its effect, cost and rarity. Tap for another"; version: "1.0"; license: "MIT"; category: "games" }
   size: 3x3
   minSize: 2x2
 

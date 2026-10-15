@@ -1,5 +1,5 @@
 widget "omacasino blackjack" {
-  meta { description: "Blackjack against the dealer from a 6-deck shoe: hit, stand, double, split, surrender or insure on a felt table, with full-screen stats and a bankroll shared with omacasino baccarat"; version: "1.1"; license: "MIT"; category: "fun"; owl: 7 }
+  meta { description: "Blackjack against the dealer from a 6-deck shoe: hit, stand, double, split, surrender or insure on a felt table, with full-screen stats and a bankroll shared with omacasino baccarat"; version: "1.1"; license: "MIT"; category: "games"; owl: 7 }
   size: 6x4
   padding: 0
   minSize: 4x3

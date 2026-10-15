@@ -1,7 +1,7 @@
 widget "programme tv" {
   size: 3x4
   minSize: 3x3
-  meta { description: "What's on every French TNT channel right now, or tonight's prime time from 21:00. Tap it for the full schedule"; version: "1.1"; license: "MIT"; category: "news"; owl: 5 }
+  meta { description: "What's on every French TNT channel right now, or tonight's prime time from 21:00. Tap it for the full schedule"; version: "1.1"; license: "MIT"; category: "media"; owl: 5 }
 
   source now = clock every 30s
   // EPG from epg.pw: one small JSON per channel, no key. Times come as UTC ISO.

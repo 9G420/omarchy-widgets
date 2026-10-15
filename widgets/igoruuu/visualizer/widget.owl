@@ -3,7 +3,7 @@ widget "visualizer" {
   minSize: 2x4
   padding: 0
   requires { pacman: [] }
-  meta { description: "A cava-style spectrum analyzer for whatever is playing on your phone: just the bars, no track info. It animates while music plays. Tap to open the player"; version: "2.0"; license: "MIT"; category: "fun" }
+  meta { description: "A cava-style spectrum analyzer for whatever is playing on your phone: just the bars, no track info. It animates while music plays. Tap to open the player"; version: "2.0"; license: "MIT"; category: "media" }
 
   // {available, playing, title, artist, album, app, package, position, duration, art}.
   // Android only shares other apps' sessions with notification access; without it available is false.

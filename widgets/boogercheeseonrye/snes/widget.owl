@@ -6,7 +6,7 @@ widget "snes" {
   order: 5
   size: 4x4
   minSize: 3x3
-  meta { owl: 6; description: "Your SNES games: finds .sfc/.smc ROMs in ~/roms/snes and opens one in RetroArch with the Snes9x core, on a portrait handheld with the game centred and touch buttons below. Send games from your phone"; version: "1.3"; license: "MIT"; category: "fun" }
+  meta { owl: 6; description: "Your SNES games: finds .sfc/.smc ROMs in ~/roms/snes and opens one in RetroArch with the Snes9x core, on a portrait handheld with the game centred and touch buttons below. Send games from your phone"; version: "1.3"; license: "MIT"; category: "games" }
 
   requires { pacman: ["retroarch", "libretro-snes9x", "python", "python-pillow", "curl", "util-linux", "xdg-utils", "ttf-dejavu"] }
 

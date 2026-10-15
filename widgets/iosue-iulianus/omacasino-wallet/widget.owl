@@ -1,5 +1,5 @@
 widget "omacasino wallet" {
-  meta { description: "The bankroll omacasino blackjack and baccarat share, from their shared ledger: the balance, what each game won or lost, and every change"; version: "1.0"; license: "MIT"; category: "fun"; owl: 7 }
+  meta { description: "The bankroll omacasino blackjack and baccarat share, from their shared ledger: the balance, what each game won or lost, and every change"; version: "1.0"; license: "MIT"; category: "games"; owl: 7 }
   size: 3x2
   minSize: 2x2
 

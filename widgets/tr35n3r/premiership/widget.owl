@@ -2,7 +2,7 @@ widget "premiership" {
   size: 6x5
   minSize: 4x4
   requires { pacman: ["curl", "jq"] }
-  meta { owl: 5; description: "Gallagher Premiership: your starred teams (or the top 5) and the current round in a time zone you pick; tap for the full table."; version: "1.1"; license: "MIT"; category: "world" }
+  meta { owl: 5; description: "Gallagher Premiership: your starred teams (or the top 5) and the current round in a time zone you pick; tap for the full table."; version: "1.1"; license: "MIT"; category: "sport" }
 
   // The league: ESPN's id, names, where the table splits, and its finals rounds.
   let fullName = "gallagher premiership"

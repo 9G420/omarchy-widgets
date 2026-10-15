@@ -4,7 +4,7 @@ widget "sudoku" {
   size: 6x7
   minSize: 4x4
   padding: 0
-  meta { description: "Sudoku in a terminal tile: every puzzle has exactly one solution. Picture grid, tap and keyboard play, pencil notes, check, hints, undo, pausable timer, 3 levels, saved game. Node.js only."; version: "1.6"; license: "MIT"; category: "fun"; owl: 2 }
+  meta { description: "Sudoku in a terminal tile: every puzzle has exactly one solution. Picture grid, tap and keyboard play, pencil notes, check, hints, undo, pausable timer, 3 levels, saved game. Node.js only."; version: "1.6"; license: "MIT"; category: "games"; owl: 2 }
   requires { pacman: ["nodejs"] }
 
   // The game is one Node.js file that this command writes to ~/.cache/owl-sudoku/sudoku.js and starts.

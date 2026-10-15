@@ -3,7 +3,7 @@ widget "simkl" {
   order: 15
   size: 6x4
   minSize: 3x4
-  meta { owl: 6; description: "Your next week of TV, anime and movies from Simkl: tile, posters and full screen. Tap login, approve the code on simkl.com, done"; version: "1.3"; license: "MIT"; category: "time" }
+  meta { owl: 6; description: "Your next week of TV, anime and movies from Simkl: tile, posters and full screen. Tap login, approve the code on simkl.com, done"; version: "1.3"; license: "MIT"; category: "media" }
   requires { pacman: ["python", "curl"] }
 
   let clientId = "95a4064f1187b0dd4846827dbbf0268d12ea8cec58ca89e323021f87eda269ed"

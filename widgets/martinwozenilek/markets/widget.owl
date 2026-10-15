@@ -2,7 +2,7 @@ widget "markets" {
   size: 6x5
   minSize: 4x4
 
-  meta { owl: 5; description: "US, European and Japanese stock markets (index futures where available), gold futures and bitcoin as % change in one chart: 24h, 1 week or 12 months"; version: "1.0"; license: "MIT"; category: "world" }
+  meta { owl: 5; description: "US, European and Japanese stock markets (index futures where available), gold futures and bitcoin as % change in one chart: 24h, 1 week or 12 months"; version: "1.0"; license: "MIT"; category: "finance" }
 
   // Yahoo Finance's public chart API, no key needed. Futures are US index futures (S&P 500, Nasdaq,
   // Nikkei) and gold; Yahoo has no European index futures, so the DAX is the cash index.

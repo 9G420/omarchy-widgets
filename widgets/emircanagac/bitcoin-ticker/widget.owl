@@ -2,7 +2,7 @@ widget "bitcoin-ticker" {
   size: 6x1
   minSize: 3x1
   padding: 0
-  meta { description: "A one-row Bitcoin ticker: the coin, the live USD price, and a faint 24-hour trend line. Tap for Coinbase."; version: "1.0"; license: "MIT"; category: "news" }
+  meta { description: "A one-row Bitcoin ticker: the coin, the live USD price, and a faint 24-hour trend line. Tap for Coinbase."; version: "1.0"; license: "MIT"; category: "finance" }
 
   source btc = http("https://api.coinbase.com/v2/prices/BTC-USD/spot") every 1m json timeout 10s
   // 15-minute candles, newest first: [time, low, high, open, close, volume]

@@ -75,7 +75,7 @@ and an app can't share a name. Launchers from before apps (0.7.2 and older) only
   (`app.owl` for an app).
 - You can only add or change widgets and apps under your own username.
 - `meta` needs a `description` (10-200 characters), a `version` and a `license`. Add a `category`
-  (`news`, `dev`, `productivity`, `time`, `world`, `fun`, `home` or `system`) so it shows under that tab in the store; without one it goes under "other".
+  (`news`, `dev`, `productivity`, `time`, `world`, `sport`, `finance`, `media`, `games`, `pets`, `fun`, `home` or `system`) so it shows under that tab in the store; without one it goes under "other".
 - Every package the commands need goes in `requires`. CI checks that the packages exist in Arch
   and warns about programs whose package isn't declared.
 - Updates raise the version. If an update changes the commands or packages, the app asks users to

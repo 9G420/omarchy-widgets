@@ -2,7 +2,7 @@ widget"super rugby nz"{
 size:6x5
 minSize:4x4
 requires{pacman:["curl","jq"]}
-meta{owl:5;description:"Super Rugby Pacific: the New Zealand teams' standings and the current round in a time zone you pick; tap for the full table.";version:"4.0";license:"MIT";category:"world"}
+meta{owl:5;description:"Super Rugby Pacific: the New Zealand teams' standings and the current round in a time zone you pick; tap for the full table.";version:"4.0";license:"MIT";category: "sport"}
 source now=clock every 1m
 let season=now==null?null:num(fmtTime(now,"yyyy"))+(num(fmtTime(now,"M"))>=7?1:0)
 source sr=http("https://site.api.espn.com/apis/v2/sports/rugby/242041/standings?season=${season}")every 6h timeout 20s json status

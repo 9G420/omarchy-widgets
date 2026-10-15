@@ -1,5 +1,5 @@
 widget "lights out" {
-  meta { owl: 5; description: "The Lights Out puzzle. Tap a light to flip it and its neighbours until every light is off"; version: "1.0"; license: "MIT"; category: "fun" }
+  meta { owl: 5; description: "The Lights Out puzzle. Tap a light to flip it and its neighbours until every light is off"; version: "1.0"; license: "MIT"; category: "games" }
   size: 4x5
   minSize: 3x4
   padding: 10

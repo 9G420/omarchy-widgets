@@ -245,7 +245,7 @@ https://github.com/SimonSchubert/omarchy-widgets. To publish one, long-press it,
 and the default agent opens a pull request there with the GitHub CLI. The store needs:
 
 - `meta` with a `description` (10-200 characters), a `version` and a `license`, and ideally a `category`:
-  `news`, `dev`, `productivity`, `time`, `world`, `fun`, `home` or `system`
+  `news`, `dev`, `productivity`, `time`, `world`, `sport`, `finance`, `media`, `games`, `pets`, `fun`, `home` or `system`
 - every package in `requires`
 - values in commands as `${sh(value)}` (or numbers), so what a command runs is all in the file
 - nothing personal: no tokens, personal paths or hard-coded location

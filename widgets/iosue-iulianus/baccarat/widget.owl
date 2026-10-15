@@ -1,5 +1,5 @@
 widget "omacasino baccarat" {
-  meta { description: "Punto Banco baccarat on a felt table: Player, Banker, Tie and pair bets, classic, no-commission or EZ rules, the bead plate and big road, and a bankroll shared with omacasino blackjack"; version: "1.0"; license: "MIT"; category: "fun"; owl: 7 }
+  meta { description: "Punto Banco baccarat on a felt table: Player, Banker, Tie and pair bets, classic, no-commission or EZ rules, the bead plate and big road, and a bankroll shared with omacasino blackjack"; version: "1.0"; license: "MIT"; category: "games"; owl: 7 }
   size: 6x4
   padding: 0
   minSize: 4x3

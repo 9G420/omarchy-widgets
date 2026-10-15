@@ -1,5 +1,5 @@
 widget "f1" {
-  meta { owl: 5; description: "F1 calendar: next race countdown, results, driver and team standings"; version: "1.0"; license: "MIT"; category: "news" }
+  meta { owl: 5; description: "F1 calendar: next race countdown, results, driver and team standings"; version: "1.0"; license: "MIT"; category: "sport" }
 
   requires { pacman: ["curl", "jq"] }
 

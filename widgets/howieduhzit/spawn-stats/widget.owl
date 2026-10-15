@@ -1,7 +1,7 @@
 widget "spawn stats" {
   size: 3x4
   minSize: 3x4
-  meta { description: "Spawn.co game stats: track a game's plays and likes, plus the hot, top and recent charts. Tap for the full list and search."; version: "1.0"; license: "MIT"; category: "fun"; owl: 5 }
+  meta { description: "Spawn.co game stats: track a game's plays and likes, plus the hot, top and recent charts. Tap for the full list and search."; version: "1.0"; license: "MIT"; category: "games"; owl: 5 }
 
   // No cmd() sources here, only http + clock, so no pacman packages are needed
   // and the widget works without Linux too.

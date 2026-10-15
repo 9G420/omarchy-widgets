@@ -3,7 +3,7 @@ widget "lastfm" {
   order: 55
   size: 6x4
   minSize: 3x3
-  meta { owl: 6; description: "Your recent Last.fm tracks with album art, plus overall scrobble, artist, album and track totals. Shows recent tracks and lifetime totals, not active scrobbling. Needs a Last.fm username and API key"; version: "1.0"; license: "MIT"; category: "fun" }
+  meta { owl: 6; description: "Your recent Last.fm tracks with album art, plus overall scrobble, artist, album and track totals. Shows recent tracks and lifetime totals, not active scrobbling. Needs a Last.fm username and API key"; version: "1.0"; license: "MIT"; category: "media" }
   requires { pacman: ["python", "curl"] }
 
   // The helper writes itself to the cache on first run (and after this file changes).

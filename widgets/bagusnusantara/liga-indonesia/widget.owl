@@ -1,5 +1,5 @@
 widget "persik kediri" {
-  meta { owl: 5; description: "Persik Kediri di Super League Indonesia: posisi, form, laga berikutnya dan klasemen, dari FotMob"; version: "2.1"; license: "MIT"; category: "world" }
+  meta { owl: 5; description: "Persik Kediri di Super League Indonesia: posisi, form, laga berikutnya dan klasemen, dari FotMob"; version: "2.1"; license: "MIT"; category: "sport" }
   size: 6x5
   minSize: 3x3
 
