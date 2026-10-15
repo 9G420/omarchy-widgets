@@ -4,6 +4,7 @@ simonschubert/hn
 simonschubert/notes
 simonschubert/convert
 simonschubert/climbing
+simonschubert/yoga
 simonschubert/earthquakes
 simonschubert/feeds
 simonschubert/github-trending
