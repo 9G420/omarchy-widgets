@@ -4,7 +4,7 @@ widget "weather art" {
     description: "Live weather drawn as intricate ASCII art that follows the latitude: alpine lakes, deserts, tropics, arctic nights, skylines and forests. Tap the tile for settings, forecasts and a few secrets."
     version: "2.2"
     license: "MIT"
-    category: "home"
+    category: "world"
   }
 
   size: 3x4

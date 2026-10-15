@@ -7,7 +7,7 @@ widget "bible" {
     description: "The NIV verse of the day. Tap for the full verse with copy and share. Needs no packages and keeps the last verse when offline."
     version: "1.0"
     license: "MIT"
-    category: "fun"
+    category: "news"
   }
 
   // ourmanna.com serves one NIV verse a day

@@ -3,7 +3,7 @@ widget "spurgeon" {
   order: 3
   size: 6x4
   minSize: 3x3
-  meta { description: "C. H. Spurgeon's Faith's Check Book entry for the day, from romans45.org. Tap it to read the whole thing"; version: "1.0"; license: "MIT"; category: "time"; owl: 5 }
+  meta { description: "C. H. Spurgeon's Faith's Check Book entry for the day, from romans45.org. Tap it to read the whole thing"; version: "1.0"; license: "MIT"; category: "news"; owl: 5 }
 
   // A plain GET from the phone: no curl, no Linux. The cgi's markup never varies, so
   // <h2> is the date, <H4> the entry's title, <H3><I> the verse, and the paragraphs are
