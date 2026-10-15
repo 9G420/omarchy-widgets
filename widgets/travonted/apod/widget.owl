@@ -5,7 +5,7 @@ widget "nasa photo of the day" {
   minSize: 3x3
   padding: 0
 
-  meta { owl: 7; description: "NASA's picture of the day: swipe through the last week of photos on the tile, tap for a full-screen view with the story behind each one."; version: "1.0"; license: "MIT"; category: "world" }
+  meta { owl: 7; description: "NASA's picture of the day: swipe through the last week of photos on the tile, tap for a full-screen view with the story behind each one."; version: "1.1"; license: "MIT"; category: "world" }
 
   requires { pacman: ["curl", "file"] }
 
@@ -67,7 +67,8 @@ widget "nasa photo of the day" {
     mkdir -p "$d"
     rm -f "$d"/[cdtx]*.part
 
-    # One word in, the five values of each photo out, ~ ending every photo.
+    # One word in, the five values of each photo out, ~ ending every photo. The URL
+    # had its % turned into spaces too; a URL has no spaces, so they go back.
     spaces=$IFS
     IFS='%'
     set -f
@@ -81,7 +82,7 @@ widget "nasa photo of the day" {
       i=$((j / 6))
       case $((j % 6)) in
       0) dt=$w; printf "%s" "$dt" > "$d/d$i.part" ;;
-      1) u=$w ;;
+      1) u=${w// /%} ;;
       2) printf "%s" "$w" > "$d/t$i.part" ;;
       3) printf "%s" "$w" > "$d/c$i.part" ;;
       4) printf "%s" "$w" > "$d/x$i.part" ;;
