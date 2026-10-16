@@ -1,7 +1,7 @@
 // Adapted from Simon Schubert's Bitcoin widget (MIT).
 // https://github.com/SimonSchubert/omarchy-widgets/tree/main/widgets/simonschubert/crypto
 widget "ethereum" {
-  meta { description: "Ethereum from CoinGecko: price, change over 1 hour, 24 hours and 7 days, the day's range and a 7-day chart. Tap it for market cap, volume, supply and the all-time high"; version: "1.0"; license: "MIT"; category: "world"; owl: 5 }
+  meta { description: "Ethereum from CoinGecko: price, change over 1 hour, 24 hours and 7 days, the day's range and a 7-day chart. Tap it for market cap, volume, supply and the all-time high"; version: "1.0"; license: "MIT"; category: "finance"; owl: 5 }
   size: 3x3
   minSize: 3x2
 
