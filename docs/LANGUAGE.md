@@ -60,8 +60,8 @@ that read it redraw. Properties are separated by newlines or `;`.
 
 Sources only run while their page (or a neighbour) is on screen, and
 identical commands in several widgets run once. Keep commands fast. A command
-can depend on state (`cmd("curl wttr.in/${sh(city)}")`) and re-runs with the new
-value at its next interval.
+can depend on state (`cmd("curl wttr.in/${sh(city)}")`) and runs again as soon as the
+value changes, at most once a second (launchers from before owl 8 wait for its next interval).
 
 A value goes into a command as `${sh(value)}`, outside any quotes: `sh` puts it in single quotes,
 so bash reads it as one word, whatever it holds. Unquoted, a `'` or `;` in a city name, a file or

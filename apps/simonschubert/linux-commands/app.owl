@@ -1,9 +1,9 @@
 app "linux commands" {
-  meta { owl: 8; description: "The Linux Command Library: 9,000+ commands with examples and options, cheat sheets and terminal tips"; version: "1.1"; license: "MIT"; category: "dev" }
+  meta { owl: 8; description: "The Linux Command Library: 9,000+ commands with examples and options, cheat sheets and terminal tips"; version: "1.2"; license: "MIT"; category: "dev" }
   title: sel != "" ? sel : basic != "" ? get(titles, basic, basic) : "linux commands"
   // Back goes from a page to the one before it (a command's "see also" chain), then to the list.
   back: sel != "" || basic != ""
-  onBack: { was = sel == "" || prev == "" || url == "commands/${prev}.md" ? null : page; url = sel == "" || prev == "" ? url : "commands/${prev}.md"; basic = ""; sel = prev; back = drop(back, 1); copied = ""; refresh() }
+  onBack: { was = sel == "" || prev == "" || url == "commands/${prev}.md" ? null : page; url = sel == "" || prev == "" ? url : "commands/${prev}.md"; basic = ""; sel = prev; back = drop(back, 1); copied = "" }
   icon: """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
     <path d="M10 39V9a4 4 0 0 1 4-4h24v34H14a4 4 0 0 0-4 4 4 4 0 0 0 4 4h24"/>
     <path d="M17 15l6 5-6 5M25 27h6"/>
@@ -21,8 +21,8 @@ app "linux commands" {
   state sel = ""
   state basic = ""
   state back = []
-  // The page being read, a path in the Linux Command Library's assets. Taps set it and refresh(); until a new page arrives, `was` holds the
-  // one it replaces, so the old page never shows under the new name.
+  // The page being read, a path in the Linux Command Library's assets; setting it fetches it. Until
+  // the new page arrives, `was` holds the one it replaces, so the old page never shows under the new name.
   state url = "tips.md"
   state was = null
   state copied = ""
@@ -66,7 +66,7 @@ app "linux commands" {
       align: center
       gap: 4
       padding: [0, 6]
-      onTap: { tab = name; sel = ""; basic = ""; back = []; was = name != "tips" || url == TIPS ? null : page; url = name == "tips" ? TIPS : url; refresh(); haptic() }
+      onTap: { tab = name; sel = ""; basic = ""; back = []; was = name != "tips" || url == TIPS ? null : page; url = name == "tips" ? TIPS : url; haptic() }
       Box {
         align: center
         width: 64
@@ -84,7 +84,7 @@ app "linux commands" {
     Text {
       text: name; font: mono; style: small; align: center; maxLines: 1; width: len(name) * 8 + 22; padding: [0, 6]; radius: 3 * corners
       background: alpha(foreground, 0.06)
-      onTap: { back = push ? [sel] + back : []; was = url == "commands/${name}.md" ? null : page; url = "commands/${name}.md"; sel = name; copied = ""; refresh() }
+      onTap: { back = push ? [sel] + back : []; was = url == "commands/${name}.md" ? null : page; url = "commands/${name}.md"; sel = name; copied = "" }
     }
   }
 
@@ -173,7 +173,7 @@ app "linux commands" {
               Text { text: "no command matches “${qq}”"; color: muted }
             }
             for n in hits key n {
-              Text { text: n; font: mono; fill: width; maxLines: 1; padding: [4, 9]; onTap: { back = []; was = url == "commands/${n}.md" ? null : page; url = "commands/${n}.md"; sel = n; copied = ""; refresh() } }
+              Text { text: n; font: mono; fill: width; maxLines: 1; padding: [4, 9]; onTap: { back = []; was = url == "commands/${n}.md" ? null : page; url = "commands/${n}.md"; sel = n; copied = "" } }
             }
           }
         }
@@ -220,7 +220,7 @@ app "linux commands" {
           Text { text: "loading…"; color: muted }
         }
         for b in basics key b {
-          Text { text: get(titles, b, b); fill: width; maxLines: 1; padding: [4, 10]; onTap: { was = url == "basics/${b}.md" ? null : page; url = "basics/${b}.md"; basic = b; copied = ""; refresh() } }
+          Text { text: get(titles, b, b); fill: width; maxLines: 1; padding: [4, 10]; onTap: { was = url == "basics/${b}.md" ? null : page; url = "basics/${b}.md"; basic = b; copied = "" } }
         }
       }
     }

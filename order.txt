@@ -5,6 +5,7 @@ simonschubert/notes
 simonschubert/convert
 simonschubert/climbing
 simonschubert/yoga
+simonschubert/linux-commands
 simonschubert/earthquakes
 simonschubert/feeds
 simonschubert/github-trending
