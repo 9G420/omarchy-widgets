@@ -1,10 +1,21 @@
 app "yoga" {
-  meta { owl: 8; description: "Guided, spoken yoga sessions with a timer for every pose: 26 sessions, 48 poses with how-tos and benefits, a daily streak and levels. No account needed."; version: "1.1"; license: "MIT"; category: "home" }
-  title: "yoga"
-  icon: """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="24" cy="13" r="3.5"/>
-    <path d="M22 3.5L13 13l11 7 11-7-9-9.5"/>
-    <path d="M24 20v25M24 31l9 4-8 4"/>
+  meta { owl: 8; description: "Guided, spoken yoga sessions with a timer for every pose: 26 sessions, 48 poses with how-tos and benefits, a daily streak and levels. No account needed."; version: "1.2"; license: "MIT"; category: "home" }
+  // The window's title names what's open; Back goes to the menu, and during a session it asks first.
+  title: view == "pose" ? poses[pid - 1].name : view == "menu" ? "yoga" : session.name
+  back: view != "menu"
+  onBack: {
+    quitting = view == "session" && phase != "intro" && !quitting
+    endsAt = quitting ? endsAt : 0
+    paused = quitting ? paused : false
+    view = quitting ? view : "menu"
+    sound(quitting ? null : "stop")
+  }
+  icon: """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+    <rect width="256" height="256" rx="56" fill="#1A1B26"/>
+    <path d="M128 182c-38-8-72-36-82-76 40 0 72 30 82 76z" fill="#BB9AF7"/>
+    <path d="M128 182c38-8 72-36 82-76-40 0-72 30-82 76z" fill="#BB9AF7"/>
+    <path d="M128 50c26 30 30 92 0 132-30-40-26-102 0-132z" fill="#F5A8D0"/>
+    <rect x="64" y="196" width="128" height="14" rx="7" fill="#7DCFFF"/>
   </svg>"""
 
   // A port of YogaBase (github.com/SimonSchubert/YogaBase), with its voice.
@@ -20,6 +31,9 @@ app "yoga" {
 
   state view = "menu"
   state tab = "sessions"
+  // The bottom bar's icons, Material's playlist play and self improvement (Apache 2.0).
+  asset sessionsIcon = base64"PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTMgMTBoMTF2Mkgzem0wLTRoMTF2Mkgzem0wIDhoN3YySDN6bTEzLTF2OGw2LTR6Ii8+PC9zdmc+"
+  asset posesIcon = base64"PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PGNpcmNsZSBmaWxsPSIjZmZmIiBjeD0iMTIiIGN5PSI2IiByPSIyIi8+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTIxIDE2di0yYy0yLjI0IDAtNC4xNi0uOTYtNS42LTIuNjhsLTEuMzQtMS42QTEuOTggMS45OCAwIDAgMCAxMi41MyA5aC0xLjA1Yy0uNTkgMC0xLjE1LjI2LTEuNTMuNzJsLTEuMzQgMS42QzcuMTYgMTMuMDQgNS4yNCAxNCAzIDE0djJjMi43NyAwIDUuMTktMS4xNyA3LTMuMjVWMTVsLTMuODggMS41NWMtLjY3LjI3LTEuMTIuOTMtMS4xMiAxLjY2QzUgMTkuMiA1LjggMjAgNi43OSAyMEg5di0uNWEyLjUgMi41IDAgMCAxIDIuNS0yLjVoM2MuMjggMCAuNS4yMi41LjVzLS4yMi41LS41LjVoLTNjLS44MyAwLTEuNS42Ny0xLjUgMS41di41aDcuMjFjLjk5IDAgMS43OS0uOCAxLjc5LTEuNzkgMC0uNzMtLjQ1LTEuMzktMS4xMi0xLjY2TDE0IDE1di0yLjI1YzEuODEgMi4wOCA0LjIzIDMuMjUgNyAzLjI1eiIvPjwvc3ZnPg=="
   state sid = 1
   state pid = 1
   // A session runs intro → hold → gap → hold … → finish; at endsAt moves it on.
@@ -167,193 +181,215 @@ app "yoga" {
   component Thumb(id, s = 40) {
     Box { size: s; Pose { id: id } }
   }
-  component Tab(name) {
-    Button { text: name; color: tab == name ? accent : muted; onTap: tab = name }
+  // A tab of the menu's bottom bar: an icon in a pill when it's the one open, and its name.
+  component Tab(name, icon) {
+    Column {
+      weight: 1
+      align: center
+      gap: 4
+      padding: [0, 6]
+      onTap: { tab = name; haptic() }
+      Box {
+        align: center
+        width: 64
+        height: 32
+        radius: 16 * corners
+        background: tab == name ? alpha(foreground, 0.14) : null
+        Image { src: icon; size: 24; tint: tab == name ? foreground : muted }
+      }
+      Text { text: name; style: small; align: center; maxLines: 1; bold: tab == name; color: tab == name ? foreground : muted }
+    }
   }
   component Clock(secs, size = 56) {
     Text { text: "${floor(secs / 60)}:${pad(str(secs % 60), 2, "0")}"; fontSize: size; bold: true; font: mono; align: center }
   }
 
   Column {
-    padding: [12, 0]
     fill: true
-    gap: 12
-    if view == "menu" {
-      if xp > 0 {
-        Column {
-          gap: 6
-          padding: 12
-          border: 1
-          radius: 8 * corners
-          Row {
-            Text { text: "level ${level} · ${rank}"; bold: true; weight: 1 }
-            Text { text: days == 1 ? "1 day streak" : "${days} day streak"; color: days > 0 ? accent : muted; width: 120; align: end }
-          }
-          Progress { value: xp - floorXp; max: ceilXp - floorXp }
-          Text { text: "${xp} xp · ${ceilXp - xp} to level ${level + 1}"; style: small; color: muted }
-        }
-      }
-      Row { gap: 4; Tab { name: "sessions" }  Tab { name: "poses" } }
-      Column {
-        scroll: true
-        weight: 1
-        gap: 10
-        if tab == "sessions" {
-          for c in sessions.sortBy(c => indexOf(order, c.level) * 100 + c.id) key c.id {
-            Column {
-              gap: 6
-              padding: 12
-              border: 1
-              borderColor: contains(done, c.id) ? alpha(accent, 0.6) : border
-              radius: 8 * corners
-              onTap: { sid = c.id; view = "session"; phase = "intro"; idx = 0; paused = false; quitting = false; endsAt = now + 10; sound(voice ? "${voiceUrl}start_0${now % 3 + 1}.mp3" : null) }
-              Row {
-                Text { text: c.name; bold: true; weight: 1 }
-                if contains(done, c.id) { Text { text: "done"; style: small; color: accent; width: 40; align: end } }
-              }
-              Text { text: c.description; style: small; color: muted; maxLines: 2 }
-              Row {
-                gap: 6
-                height: 40
-                for id in c.poses.take(7) { Thumb { id: id } }
-                if len(c.poses) > 7 { Text { text: "+${len(c.poses) - 7}"; style: small; color: muted; width: 32 } }
-              }
-              Text { text: "${c.level} · ${len(c.poses)} poses · ${fmtDuration(sum(c.poses.map(id => round(poses[id - 1].time * pace))) + len(c.poses) - 1)}"; style: small; color: accent }
+    gap: 0
+    // The views keep a margin, with room at the bottom for a session's buttons; the menu's bar runs to the edges.
+    Column {
+      weight: 1
+      padding: [12, 0, 12, view == "menu" ? 0 : 12]
+      gap: 12
+      if view == "menu" {
+        if xp > 0 {
+          Column {
+            gap: 6
+            padding: 12
+            border: 1
+            radius: 8 * corners
+            Row {
+              Text { text: "level ${level} · ${rank}"; bold: true; weight: 1 }
+              Text { text: days == 1 ? "1 day streak" : "${days} day streak"; color: days > 0 ? accent : muted; width: 120; align: end }
             }
+            Progress { value: xp - floorXp; max: ceilXp - floorXp }
+            Text { text: "${xp} xp · ${ceilXp - xp} to level ${level + 1}"; style: small; color: muted }
+          }
+        }
+        Column {
+          scroll: true
+          weight: 1
+          gap: 10
+          if tab == "sessions" {
+            for c in sessions.sortBy(c => indexOf(order, c.level) * 100 + c.id) key c.id {
+              Column {
+                gap: 6
+                padding: 12
+                border: 1
+                borderColor: contains(done, c.id) ? alpha(accent, 0.6) : border
+                radius: 8 * corners
+                onTap: { sid = c.id; view = "session"; phase = "intro"; idx = 0; paused = false; quitting = false; endsAt = now + 10; sound(voice ? "${voiceUrl}start_0${now % 3 + 1}.mp3" : null) }
+                Row {
+                  Text { text: c.name; bold: true; weight: 1 }
+                  if contains(done, c.id) { Text { text: "done"; style: small; color: accent; width: 40; align: end } }
+                }
+                Text { text: c.description; style: small; color: muted; maxLines: 2 }
+                Row {
+                  gap: 6
+                  height: 40
+                  for id in c.poses.take(7) { Thumb { id: id } }
+                  if len(c.poses) > 7 { Text { text: "+${len(c.poses) - 7}"; style: small; color: muted; width: 32 } }
+                }
+                Text { text: "${c.level} · ${len(c.poses)} poses · ${fmtDuration(sum(c.poses.map(id => round(poses[id - 1].time * pace))) + len(c.poses) - 1)}"; style: small; color: accent }
+              }
+            }
+          } else {
+            Grid {
+              columns: 3
+              gap: 10
+              for p in poses.sortBy(p => p.name) key p.id {
+                Column {
+                  gap: 2
+                  align: center
+                  onTap: { pid = p.id; view = "pose" }
+                  Thumb { id: p.id; s: 84 }
+                  Text { text: p.name; style: small; align: center; maxLines: 2 }
+                }
+              }
+            }
+          }
+        }
+      } else if view == "pose" {
+        let p = poses[pid - 1]
+        Column {
+          scroll: true
+          weight: 1
+          gap: 10
+          Box { height: 220; fill: width; Pose { id: p.id } }
+          Text { text: p.sanskrit; italic: true; align: center }
+          Text { text: p.translation; style: small; color: muted; align: center }
+          Text { text: "${p.level} · hold ${replace(fmtDuration(round(p.time * pace)), " 0s", "")}${p.sides ? " · both sides" : ""}"; color: accent; align: center }
+          Text { text: "how"; style: label; color: accent }
+          Text { text: p.description }
+          Text { text: "benefits"; style: label; color: accent }
+          Text { text: p.benefits }
+          let inSessions = sessions.filter(c => contains(c.poses, p.id))
+          if len(inSessions) > 0 {
+            Text { text: "in sessions"; style: label; color: accent }
+            for c in inSessions key c.id {
+              Row {
+                onTap: { sid = c.id; view = "session"; phase = "intro"; idx = 0; paused = false; quitting = false; endsAt = now + 10; sound(voice ? "${voiceUrl}start_0${now % 3 + 1}.mp3" : null) }
+                Text { text: c.name; weight: 1 }
+                Text { text: "start ›"; color: accent; width: 60; align: end }
+              }
+            }
+          }
+        }
+      } else if view == "session" && phase == "intro" {
+        Column {
+          weight: 1
+          gap: 10
+          align: center
+          justify: center
+          Text { text: "get ready"; style: label; color: muted; align: center }
+          Text { text: session.description; color: muted; align: center }
+          Box { height: 200; fill: width; Pose { id: run[0] } }
+          Text { text: "first: ${poses[run[0] - 1].name}"; style: small; color: muted; align: center }
+          Text { text: "${max(0, endsAt - (now ?? 0))}"; fontSize: 64; bold: true; font: mono; color: accent; align: center }
+          Row {
+            gap: 6
+            for pc in paces {
+              Button { text: pc.name; color: pace == pc.v ? accent : muted; onTap: pace = pc.v }
+            }
+          }
+          Text { text: "${len(run)} poses · ${fmtDuration(total)} at this pace"; style: small; color: muted; align: center }
+        }
+        Row {
+          Spacer { weight: 1 }
+          Button { text: "start now"; onTap: endsAt = now }
+        }
+      } else if view == "session" {
+        Row {
+          Text { text: "pose ${shown + 1} of ${len(run)}"; style: small; color: muted; weight: 1; maxLines: 1 }
+          Button { text: voice ? "voice on" : "voice off"; color: voice ? accent : muted; onTap: { voice = !voice; sound("stop") } }
+        }
+        Progress { value: phase == "gap" ? shown : shown + (dur - remaining) / max(dur, 1); max: len(run) }
+        Box {
+          weight: 1
+          fill: width
+          Box { fill: true; opacity: phase == "gap" ? 0.5 : 1; Pose { id: pose.id; mirror: flipped; cap: 300 } }
+        }
+        Text { text: pose.name; style: title; align: center }
+        Text { text: pose.plain; color: muted; align: center; maxLines: 1 }
+        Clock { secs: remaining }
+        Text {
+          text: phase == "gap" ? "next pose" : paused ? "paused" : remaining <= 3 && shown < len(run) - 1 ? "get ready for the next pose…" : pose.sides ? (flipped ? "second side" : "first side") : " "
+          color: paused ? yellow : muted
+          align: center
+        }
+        let upcoming = run.drop(shown + 1).take(6)
+        Row {
+          gap: 6
+          height: 36
+          fill: width
+          justify: center
+          if len(upcoming) == 0 { Text { text: "last pose"; style: small; color: muted; align: center } }
+          for id, i in upcoming { Box { opacity: i == 0 ? 1 : 0.5; Thumb { id: id; s: 36 } } }
+        }
+        if quitting {
+          Row {
+            gap: 8
+            Text { text: "quit this session?"; weight: 1 }
+            Button { text: "keep going"; onTap: quitting = false }
+            Button { text: "quit"; color: red; onTap: { endsAt = 0; paused = false; quitting = false; view = "menu"; sound("stop") } }
           }
         } else {
-          Grid {
-            columns: 3
-            gap: 10
-            for p in poses.sortBy(p => p.name) key p.id {
-              Column {
-                gap: 2
-                align: center
-                onTap: { pid = p.id; view = "pose" }
-                Thumb { id: p.id; s: 84 }
-                Text { text: p.name; style: small; align: center; maxLines: 2 }
-              }
-            }
+          Row {
+            gap: 8
+            Button { text: "quit"; color: muted; onTap: quitting = true }
+            Spacer { weight: 1 }
+            Button { text: paused ? "resume" : "pause"; onTap: { left = paused ? left : remaining; endsAt = paused ? now + left : 0; paused = !paused; sound(paused ? "stop" : null) } }
+            Button { text: "skip"; onTap: { paused = false; endsAt = now } }
           }
-        }
-      }
-    } else if view == "pose" {
-      let p = poses[pid - 1]
-      Row { Button { text: "← poses"; color: muted; onTap: view = "menu" } }
-      Column {
-        scroll: true
-        weight: 1
-        gap: 10
-        Box { height: 220; fill: width; Pose { id: p.id } }
-        Text { text: p.name; style: title; align: center }
-        Text { text: p.sanskrit; italic: true; align: center }
-        Text { text: p.translation; style: small; color: muted; align: center }
-        Text { text: "${p.level} · hold ${replace(fmtDuration(round(p.time * pace)), " 0s", "")}${p.sides ? " · both sides" : ""}"; color: accent; align: center }
-        Text { text: "how"; style: label; color: accent }
-        Text { text: p.description }
-        Text { text: "benefits"; style: label; color: accent }
-        Text { text: p.benefits }
-        let inSessions = sessions.filter(c => contains(c.poses, p.id))
-        if len(inSessions) > 0 {
-          Text { text: "in sessions"; style: label; color: accent }
-          for c in inSessions key c.id {
-            Row {
-              onTap: { sid = c.id; view = "session"; phase = "intro"; idx = 0; paused = false; quitting = false; endsAt = now + 10; sound(voice ? "${voiceUrl}start_0${now % 3 + 1}.mp3" : null) }
-              Text { text: c.name; weight: 1 }
-              Text { text: "start ›"; color: accent; width: 60; align: end }
-            }
-          }
-        }
-      }
-    } else if view == "session" && phase == "intro" {
-      Column {
-        weight: 1
-        gap: 10
-        align: center
-        justify: center
-        Text { text: "get ready"; style: label; color: muted; align: center }
-        Text { text: session.name; style: title; align: center }
-        Text { text: session.description; color: muted; align: center }
-        Box { height: 200; fill: width; Pose { id: run[0] } }
-        Text { text: "first: ${poses[run[0] - 1].name}"; style: small; color: muted; align: center }
-        Text { text: "${max(0, endsAt - (now ?? 0))}"; fontSize: 64; bold: true; font: mono; color: accent; align: center }
-        Row {
-          gap: 6
-          for pc in paces {
-            Button { text: pc.name; color: pace == pc.v ? accent : muted; onTap: pace = pc.v }
-          }
-        }
-        Text { text: "${len(run)} poses · ${fmtDuration(total)} at this pace"; style: small; color: muted; align: center }
-      }
-      Row {
-        gap: 8
-        Button { text: "back"; color: muted; onTap: { endsAt = 0; view = "menu"; sound("stop") } }
-        Spacer { weight: 1 }
-        Button { text: "start now"; onTap: endsAt = now }
-      }
-    } else if view == "session" {
-      Row {
-        Text { text: "${shown + 1} / ${len(run)} · ${session.name}"; style: small; color: muted; weight: 1; maxLines: 1 }
-        Button { text: voice ? "voice on" : "voice off"; color: voice ? accent : muted; onTap: { voice = !voice; sound("stop") } }
-      }
-      Progress { value: phase == "gap" ? shown : shown + (dur - remaining) / max(dur, 1); max: len(run) }
-      Box {
-        weight: 1
-        fill: width
-        Box { fill: true; opacity: phase == "gap" ? 0.5 : 1; Pose { id: pose.id; mirror: flipped; cap: 300 } }
-      }
-      Text { text: pose.name; style: title; align: center }
-      Text { text: pose.plain; color: muted; align: center; maxLines: 1 }
-      Clock { secs: remaining }
-      Text {
-        text: phase == "gap" ? "next pose" : paused ? "paused" : remaining <= 3 && shown < len(run) - 1 ? "get ready for the next pose…" : pose.sides ? (flipped ? "second side" : "first side") : " "
-        color: paused ? yellow : muted
-        align: center
-      }
-      let upcoming = run.drop(shown + 1).take(6)
-      Row {
-        gap: 6
-        height: 36
-        fill: width
-        justify: center
-        if len(upcoming) == 0 { Text { text: "last pose"; style: small; color: muted; align: center } }
-        for id, i in upcoming { Box { opacity: i == 0 ? 1 : 0.5; Thumb { id: id; s: 36 } } }
-      }
-      if quitting {
-        Row {
-          gap: 8
-          Text { text: "quit this session?"; weight: 1 }
-          Button { text: "keep going"; onTap: quitting = false }
-          Button { text: "quit"; color: red; onTap: { endsAt = 0; paused = false; quitting = false; view = "menu"; sound("stop") } }
         }
       } else {
+        Column {
+          weight: 1
+          gap: 10
+          align: center
+          justify: center
+          Box { height: 180; fill: width; Pose { id: run[len(run) - 1] } }
+          Text { text: "great job"; style: huge; align: center }
+          Text { text: days == 1 ? "1 day streak" : "${days} day streak"; style: title; color: accent; align: center }
+          if gained > 0 { Text { text: "+${gained} xp"; bold: true; color: accent; align: center } }
+          if gained > 0 && floor(sqrt((xp - gained) / 50)) + 1 < level { Text { text: "level ${level}: ${rank}"; bold: true; color: accent; align: center } }
+          if gained == 0 { Text { text: "xp comes with the first session of the day"; style: small; color: muted; align: center } }
+        }
         Row {
           gap: 8
-          Button { text: "quit"; color: muted; onTap: quitting = true }
+          Button { text: "done"; color: muted; onTap: { view = "menu"; sound("stop") } }
           Spacer { weight: 1 }
-          Button { text: paused ? "resume" : "pause"; onTap: { left = paused ? left : remaining; endsAt = paused ? now + left : 0; paused = !paused; sound(paused ? "stop" : null) } }
-          Button { text: "skip"; onTap: { paused = false; endsAt = now } }
+          Button { text: "again"; onTap: { view = "session"; phase = "intro"; idx = 0; paused = false; quitting = false; endsAt = now + 10; sound(voice ? "${voiceUrl}start_0${now % 3 + 1}.mp3" : null) } }
         }
       }
-    } else {
-      Column {
-        weight: 1
-        gap: 10
-        align: center
-        justify: center
-        Box { height: 180; fill: width; Pose { id: run[len(run) - 1] } }
-        Text { text: "great job"; style: huge; align: center }
-        Text { text: session.name; color: muted; align: center }
-        Text { text: days == 1 ? "1 day streak" : "${days} day streak"; style: title; color: accent; align: center }
-        if gained > 0 { Text { text: "+${gained} xp"; bold: true; color: accent; align: center } }
-        if gained > 0 && floor(sqrt((xp - gained) / 50)) + 1 < level { Text { text: "level ${level}: ${rank}"; bold: true; color: accent; align: center } }
-        if gained == 0 { Text { text: "xp comes with the first session of the day"; style: small; color: muted; align: center } }
-      }
+    }
+    if view == "menu" {
+      Box { height: 1; fill: width; background: alpha(muted, 0.25) }
       Row {
-        gap: 8
-        Button { text: "back to menu"; color: muted; onTap: { view = "menu"; sound("stop") } }
-        Spacer { weight: 1 }
-        Button { text: "again"; onTap: { view = "session"; phase = "intro"; idx = 0; paused = false; quitting = false; endsAt = now + 10; sound(voice ? "${voiceUrl}start_0${now % 3 + 1}.mp3" : null) } }
+        gap: 0
+        Tab { name: "sessions"; icon: sessionsIcon }
+        Tab { name: "poses"; icon: posesIcon }
       }
     }
   }
