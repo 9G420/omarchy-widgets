@@ -14,7 +14,10 @@
 # android.battery and android.media are not here: OwlSource.qml reads the
 # battery from UPower, and the OwlHost supplies media.
 #
-# system also answers `linux`: {os, pkgs, explicit, shell, upgraded}, the
+# system's `launcher` is the version of the app showing the widget: Omarchy
+# Mobile's build, or $OWL_LAUNCHER_VERSION, which a desktop host sets.
+#
+# system also answers `linux`: {os, pkgs, explicit, shell, upgraded, user, host}, the
 # facts the launcher's widgets get from a cmd() in its Arch guest, read here
 # from the files pacman keeps -- so a widget can show them where it may not
 # run commands. null where there is no pacman database. The launcher's own
@@ -57,6 +60,11 @@ home=${HOME:-}
 [ -z "$root" ] || home=$root/home
 
 # A JSON string, or null for an empty one.
+# A string Android always has, "" when unknown (Build.SOC_MODEL and the like).
+estr() {
+  if [ -z "$1" ]; then printf '""'; else str "$1"; fi
+}
+
 str() {
   local s=$1
   if [ -z "$s" ]; then
@@ -102,6 +110,17 @@ soc() {
   printf '%s' "${last#*,}"
 }
 
+# The firmware's name for a PC or laptop, as fastfetch shows it; nothing for
+# the placeholders boards ship with.
+dmi() {
+  local v
+  v=$(cat "$root/sys/class/dmi/id/$1" 2>/dev/null) || return 0
+  case $v in
+    '' | 'To be filled by O.E.M.' | 'Default string' | 'System Product Name' | 'System manufacturer' | 'Not Applicable') return 0 ;;
+  esac
+  printf '%s' "$v"
+}
+
 device() {
   local name maker model
   name=$(build_info device-name)
@@ -111,8 +130,12 @@ device() {
     *' '*) maker=${name%% *}; model=${name#* } ;;
     *) maker=''; model=$name ;;
   esac
+  if [ -z "$name" ]; then
+    maker=$(dmi sys_vendor)
+    model=$(dmi product_name)
+  fi
   printf '{"model":%s,"maker":%s,"android":null,"sdk":null,"soc":%s}\n' \
-    "$(str "$model")" "$(str "$maker")" "$(str "$(soc)")"
+    "$(str "$model")" "$(str "$maker")" "$(estr "$(soc)")"
 }
 
 system() {
@@ -177,9 +200,9 @@ system() {
   printf '"kernel":%s,"uptime":%s,"apps":%s,"theme":%s,' \
     "$(str "$kernel")" "$(num "$uptime")" "$(num "$apps")" "$(str "$theme")"
   printf '"cpu":{"soc":%s,"hardware":%s,"maker":%s,"cores":%s,"abi":%s,"maxMhz":%s},' \
-    "$(str "$(soc)")" "$(str "$hardware")" "$(str "$maker")" "$(num "$cores")" "$(str "$(uname -m)")" "$(num "$mhz")"
+    "$(estr "$(soc)")" "$(str "$hardware")" "$(estr "$maker")" "$(num "$cores")" "$(str "$(uname -m)")" "$(num "$mhz")"
   printf '"launcher":%s,"codename":%s,"build":%s,"patch":null,"locale":%s,"timezone":%s,"linux":%s}\n' \
-    "$(str "$(build_info version)")" "$(str "$(build_info device)")" "$(str "$(build_info commit | cut -c1-12)")" \
+    "$(str "${OWL_LAUNCHER_VERSION:-$(build_info version)}")" "$(str "$(build_info device)")" "$(str "$(build_info commit | cut -c1-12)")" \
     "$(str "$locale")" "$(str "$tz")" "$(linux)"
 }
 
@@ -202,8 +225,9 @@ linux() {
   sh=${sh##*/}
   version=
   [ "$sh" != bash ] || version=" ${BASH_VERSION%%(*}"
-  printf '{"os":%s,"pkgs":%s,"explicit":%s,"shell":%s,"upgraded":%s}' \
-    "$(str "$os")" "$(num "$pkgs")" "$(num "$((pkgs - deps))")" "$(str "$sh$version")" "$(str "$upgraded")"
+  printf '{"os":%s,"pkgs":%s,"explicit":%s,"shell":%s,"upgraded":%s,"user":%s,"host":%s}' \
+    "$(str "$os")" "$(num "$pkgs")" "$(num "$((pkgs - deps))")" "$(str "$sh$version")" "$(str "$upgraded")" \
+    "$(str "$(id -un 2>/dev/null)")" "$(str "$(cat "$root/proc/sys/kernel/hostname" 2>/dev/null)")"
 }
 
 volume() {

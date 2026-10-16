@@ -39,8 +39,11 @@ QtObject {
     var u = String(Qt.resolvedUrl("owl-source"))
     return u.indexOf("file://") === 0 ? decodeURIComponent(u.slice(7)) : u
   }
+  // The host app's version, which android.system answers as `launcher`.
+  property string launcherVersion: ""
   function sourceCommand(kind) {
-    return "bash '" + root.sourceScript + "' " + kind.replace(/^android\./, "")
+    var env = /^[0-9A-Za-z.+~-]+$/.test(root.launcherVersion) ? "OWL_LAUNCHER_VERSION=" + root.launcherVersion + " " : ""
+    return env + "bash '" + root.sourceScript + "' " + kind.replace(/^android\./, "")
   }
 
   // android.media: {playing, title, artist, album, app}, from the first MPRIS

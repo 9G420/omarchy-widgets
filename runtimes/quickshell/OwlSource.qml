@@ -212,11 +212,38 @@ Item {
 
   // ------------------------------------------------------------ android
 
+  // The laptop's own battery: health is on it, not on UPower's display
+  // device, which only adds up the charge of every battery.
+  readonly property var cell: {
+    if (root.kind !== "android.battery") return null
+    var all = UPower.devices.values
+    for (var i = 0; i < all.length; i++) if (all[i].isLaptopBattery && all[i].isPresent) return all[i]
+    return null
+  }
+  // What UPower doesn't pass on, from the kernel's battery files.
+  readonly property string cellDir: root.cell && /^[A-Za-z0-9_.-]+$/.test(root.cell.nativePath)
+    ? "/sys/class/power_supply/" + root.cell.nativePath : ""
+  property var cycles: null
+  property var technology: null
+  FileView {
+    path: root.cellDir ? root.cellDir + "/cycle_count" : ""
+    printErrors: false
+    onLoaded: { var n = parseInt(text(), 10); root.cycles = n > 0 ? n : null }
+    onLoadFailed: root.cycles = null
+  }
+  FileView {
+    path: root.cellDir ? root.cellDir + "/technology" : ""
+    printErrors: false
+    onLoaded: { var t = text().trim(); root.technology = t && t !== "Unknown" ? t : null }
+    onLoadFailed: root.technology = null
+  }
+
   // UPower is what the status bar reads, so the widget and the bar agree.
   readonly property var battery: {
     if (root.kind !== "android.battery") return null
     var d = UPower.displayDevice
     if (!d || !d.isPresent) return null
+    var c = root.cell
     var level = Math.round(Number(d.percentage || 0) * 100)
     var state = d.state
     var status = state === UPowerDeviceState.Charging ? "charging"
@@ -228,7 +255,10 @@ Item {
       charging: !UPower.onBattery,
       status: status,
       plugged: UPower.onBattery ? null : "ac",
-      health: d.healthSupported ? Math.round(Number(d.healthPercentage)) + "%" : null
+      health: c && c.healthSupported ? Math.round(Number(c.healthPercentage)) + "%"
+        : d.healthSupported ? Math.round(Number(d.healthPercentage)) + "%" : null,
+      cycles: root.cycles,
+      technology: root.technology
     }
   }
   onBatteryChanged: if (root.active && root.kind === "android.battery") root.widget.sourceObject(root.spec.slot, root.battery)
