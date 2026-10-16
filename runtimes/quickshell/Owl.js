@@ -2884,8 +2884,15 @@ Instance.prototype = {
     var out = []
     var count = { n: 0 }
     try {
-      this.drawBudget.run(function() {
-        self.drawList(list, new Env(self.drawBridge, env, [width, height]), out, count)
+      // The widget's lets a frame reads first are worked out on the instance's
+      // budget, not the draw's. A draw starts that budget again, as a render
+      // does: a widget whose tree never reads `time` is never rendered again,
+      // so without this its lets' steps added up frame after frame until every
+      // frame failed (the koi pond went blank after four seconds).
+      this.budget.run(function() {
+        self.drawBudget.run(function() {
+          self.drawList(list, new Env(self.drawBridge, env, [width, height]), out, count)
+        })
       })
     } catch (e) {
       this.host.report("Canvas: " + messageOf(e))
