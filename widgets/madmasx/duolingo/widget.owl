@@ -1,8 +1,22 @@
 widget "duolingo" {
+  page: 1
+  order: 2
   size: 3x2
   minSize: 3x2
-  meta { description: "Tu racha y tus cursos de Duolingo en vivo. Escribe tu usuario en «configurar»; toca el widget para abrir la app"; version: "1.0"; license: "MIT"; category: "fun"; owl: 5 }
-  requires { pacman: [] }
+  meta {
+    description: "Tu racha y tus cursos de Duolingo en vivo. Toca el widget para configurar tu usuario y ver el detalle; «abrir duo» abre la app."
+    version: "1.2"
+    author: "Madmasx"
+    license: "MIT"
+    category: "fun"
+    owl: 5
+  }
+
+  source sys = android.system every 5m
+
+  // Detección del idioma del sistema
+  let rawLocale = sys == null ? "" : (sys.locale ?? "")
+  let isEs = startsWith(lower(rawLocale), "es") || rawLocale == "" || startsWith(lower(rawLocale), "spa")
 
   // Cada persona escribe su propio usuario: se guarda en el launcher, nunca en el archivo.
   state username = "" persist
@@ -19,69 +33,108 @@ widget "duolingo" {
   // El ajedrez no aparece en `courses`: su XP es lo que sobra del total.
   let chessXp = totalXp - sum(courses.map(c => num(c.xp)))
   let hasChess = chessXp > 0 && contains(u.currentCourseId ?? "", "CHESS")
-  let all = flatten([courses, hasChess ? [{ learningLanguage: "chess", title: "Ajedrez", xp: chessXp }] : []]).sortBy(c => -num(c.xp))
+  let all = flatten([courses, hasChess ? [{ learningLanguage: "chess", title: isEs ? "Ajedrez" : "Chess", xp: chessXp }] : []]).sortBy(c => -num(c.xp))
   let topXp = max(all.map(c => num(c.xp)))
-  let langs = {
+
+  let langsEs = {
     ru: "Ruso", en: "Inglés", it: "Italiano", ja: "Japonés", zh: "Chino", ko: "Coreano",
     de: "Alemán", fr: "Francés", es: "Español", pt: "Portugués", nl: "Neerlandés",
     sv: "Sueco", no: "Noruego", da: "Danés", pl: "Polaco", tr: "Turco", hi: "Hindi",
     ar: "Árabe", he: "Hebreo", el: "Griego", uk: "Ucraniano", vi: "Vietnamita", eo: "Esperanto",
     chess: "Ajedrez"
   }
+  let langsEn = {
+    ru: "Russian", en: "English", it: "Italian", ja: "Japanese", zh: "Chinese", ko: "Korean",
+    de: "German", fr: "French", es: "Spanish", pt: "Portuguese", nl: "Dutch",
+    sv: "Swedish", no: "Norwegian", da: "Danish", pl: "Polish", tr: "Turkish", hi: "Hindi",
+    ar: "Arabic", he: "Hebrew", el: "Greek", uk: "Ukrainian", vi: "Vietnamese", eo: "Esperanto",
+    chess: "Chess"
+  }
+  let langs = isEs ? langsEs : langsEn
 
-  // Una llama de píxeles, dibujada igual en el mosaico y en la pantalla.
-  let flame = [
-    ".....o.....",
-    "....ooo....",
-    "....oyo....",
-    "...ooyoo...",
-    "...oyyyo...",
-    "..ooyyooo..",
-    "..oyyyyyoo.",
-    ".ooyyyyyyoo",
-    ".oyyyyyyyyo",
-    ".ooyyyyyyoo",
-    "..ooyyyyoo.",
-    "...oooooo..",
-    "....oooo..."
-  ]
+  let activeCourseList = all.filter(c => contains(u.currentCourseId ?? "", upper(c.learningLanguage)))
+  let activeCourse = len(activeCourseList) > 0 ? activeCourseList[0] : (len(all) > 0 ? all[0] : null)
+  let activeCourseName = activeCourse == null ? "" : get(langs, activeCourse.learningLanguage, activeCourse.title)
 
-  onTap: androidApp("com.duolingo")
+  // Tocar el tile abre el detalle y la configuración; para la app, el enlace de arriba.
+  onTap: screen()
 
+  // ---- Llama vectorial orgánica con ojos estilo Duolingo y resplandor ----
   component Flame(sz = 44) {
     Canvas {
       width: sz
-      height: sz + sz / 11 * 2
-      let px = sz / 11
-      sprite(flame, 0, (height - 13 * px) / 2, px, palette: { o: orange, y: yellow })
+      height: sz * 1.15
+      let fw = sz
+      let fh = sz * 1.15
+      let cx = fw * 0.5
+      let cy = fh * 0.6
+
+      // Halo resplandeciente
+      circle(cx, cy, fw * 0.65, fill: radial(cx, cy, fw * 0.65, [alpha("#FF9600", 0.32), alpha("#FF9600", 0.0)]))
+
+      // Cuerpo exterior de fuego
+      let P = [
+        [0.45, 0.02], [0.52, 0.07], [0.58, 0.14], [0.64, 0.22], [0.72, 0.26],
+        [0.77, 0.32], [0.74, 0.38], [0.70, 0.42], [0.78, 0.48], [0.85, 0.56],
+        [0.89, 0.66], [0.88, 0.77], [0.82, 0.86], [0.73, 0.94], [0.62, 0.98],
+        [0.50, 1.00], [0.38, 0.98], [0.27, 0.94], [0.18, 0.86], [0.12, 0.77],
+        [0.11, 0.66], [0.14, 0.56], [0.20, 0.47], [0.26, 0.41], [0.24, 0.33],
+        [0.19, 0.27], [0.23, 0.21], [0.30, 0.15], [0.37, 0.08]
+      ]
+      path(P.map(p => [p[0] * fw, p[1] * fh]), closed: true, fill: linear(0, 0, 0, fh, ["#FF9600", "#FF3B00"]))
+
+      // Núcleo brillante amarillo
+      let I = [
+        [0.46, 0.38], [0.54, 0.46], [0.62, 0.56], [0.68, 0.68], [0.67, 0.79],
+        [0.61, 0.88], [0.50, 0.94], [0.39, 0.88], [0.33, 0.79], [0.32, 0.68],
+        [0.38, 0.56], [0.43, 0.46]
+      ]
+      path(I.map(p => [p[0] * fw, p[1] * fh]), closed: true, fill: linear(0, fh * 0.38, 0, fh, ["#FFF885", "#FFA700"]))
+
+      // Ojos estilo Duolingo
+      let eyeW = fw * 0.085
+      let eyeH = fh * 0.145
+      let eyeY = fh * 0.61
+      let eyeSpacing = fw * 0.125
+      rect(cx - eyeSpacing - eyeW / 2, eyeY, eyeW, eyeH, radius: eyeW * 0.5, fill: "#2B1600")
+      rect(cx + eyeSpacing - eyeW / 2, eyeY, eyeW, eyeH, radius: eyeW * 0.5, fill: "#2B1600")
+      circle(cx - eyeSpacing, eyeY + eyeH * 0.28, eyeW * 0.32, fill: "#FFFFFF")
+      circle(cx + eyeSpacing, eyeY + eyeH * 0.28, eyeW * 0.32, fill: "#FFFFFF")
     }
   }
 
   Column {
-    gap: 2
+    gap: 4
     Row {
       align: center
-      Text { text: "racha"; style: label; color: muted; weight: 1; maxLines: 1 }
-      Text { text: username == "" ? "configurar ›" : "detalle ›"; style: label; color: accent; width: 96; align: end; maxLines: 1; onTap: screen() }
+      Text { text: "DUOLINGO"; style: label; bold: true; color: "#58CC02"; weight: 1; maxLines: 1 }
+      Text { text: isEs ? "abrir ›" : "open ›"; style: label; color: accent; width: 55; align: end; maxLines: 1; onTap: androidApp("com.duolingo") }
     }
     Row {
-      gap: 8
+      gap: 10
       align: center
       weight: 1
-      Flame { sz: 40 }
+      Flame { sz: 46 }
       Column {
-        gap: 0
+        gap: 1
         weight: 1
         if username == "" {
-          Text { text: "configura"; style: title; color: muted; maxLines: 1 }
-          Text { text: "tu usuario"; style: small; color: muted; maxLines: 1 }
+          Text { text: isEs ? "Configura" : "Set up"; style: title; color: muted; maxLines: 1 }
+          Text { text: isEs ? "tu usuario" : "username"; style: small; color: muted; maxLines: 1 }
         } else {
-          Text { text: u == null ? "…" : "${streak}"; style: huge; color: streak > 0 ? orange : muted; maxLines: 1 }
-          Text { text: streak == 1 ? "día seguido" : "días seguidos"; style: small; color: muted; maxLines: 1 }
+          Text { text: u == null ? "…" : "${streak}"; fontSize: 38; bold: true; color: streak > 0 ? "#FF9600" : muted; maxLines: 1 }
+          Text { text: isEs ? (streak == 1 ? "DÍA DE RACHA" : "DÍAS DE RACHA") : (streak == 1 ? "DAY STREAK" : "DAYS STREAK"); style: small; bold: true; color: alpha(foreground, 0.78); maxLines: 1 }
         }
       }
     }
-    Text { text: username == "" ? "toca para configurar" : (u == null ? "duolingo…" : "${totalShort} XP total"); style: small; color: muted; maxLines: 1 }
+    Text {
+      text: username == ""
+        ? (isEs ? "toca para configurar" : "tap to configure")
+        : (u == null ? "duolingo…" : "${activeCourseName != "" ? activeCourseName + " · " : ""}${totalShort} XP")
+      style: small
+      color: muted
+      maxLines: 1
+    }
   }
 
   screen {
@@ -89,12 +142,12 @@ widget "duolingo" {
     Column {
       scroll: true
       gap: 14
-      Input { placeholder: "tu usuario de Duolingo"; clear: true; onSubmit: { username = trim(value); refresh() } }
+      Input { placeholder: isEs ? "tu usuario de Duolingo" : "your Duolingo username"; clear: true; onSubmit: { username = trim(value); refresh() } }
       if username == "" {
-        Text { text: "Escribe arriba tu nombre de usuario de Duolingo y pulsa enviar para ver tu racha y tus cursos."; style: body; color: muted }
+        Text { text: isEs ? "Escribe arriba tu nombre de usuario de Duolingo y pulsa enviar para ver tu racha y tus cursos." : "Type your Duolingo username above and press enter to view your streak and courses."; style: body; color: muted }
       } else {
         if duo != null && u == null {
-          Text { text: "usuario \"${username}\" no encontrado"; style: body; color: muted }
+          Text { text: isEs ? "usuario \"${username}\" no encontrado" : "user \"${username}\" not found"; style: body; color: muted }
         } else {
           Column {
             gap: 14
@@ -103,15 +156,15 @@ widget "duolingo" {
               align: center
               Flame { sz: 64 }
               Column {
-                gap: 0
+                gap: 2
                 weight: 1
-                Text { text: duo == null ? "…" : "${streak}"; fontSize: 44; color: orange; maxLines: 1 }
-                Text { text: streak == 1 ? "día de racha" : "días de racha"; style: body; color: muted }
-                Text { text: "${totalShort} XP en total"; style: small; color: muted }
+                Text { text: duo == null ? "…" : "${streak}"; fontSize: 48; bold: true; color: "#FF9600"; maxLines: 1 }
+                Text { text: isEs ? (streak == 1 ? "Día de racha" : "Días de racha") : (streak == 1 ? "Day streak" : "Days streak"); style: body; bold: true; color: foreground }
+                Text { text: isEs ? "${totalShort} XP acumulados" : "${totalShort} total XP"; style: small; color: muted }
               }
             }
             Spacer { height: 1; fill: width; background: alpha(muted, 0.25) }
-            Text { text: "cursos"; style: label; color: accent }
+            Text { text: isEs ? "cursos" : "courses"; style: label; color: accent }
             for c, i in all key c.learningLanguage {
               Row {
                 gap: 10
@@ -124,7 +177,7 @@ widget "duolingo" {
                   height: 8
                   weight: 1
                   rect(0, 1, width, 6, radius: 3, fill: alpha(muted, 0.2))
-                  rect(0, 1, max(width * num(c.xp) / max(topXp, 1), 6), 6, radius: 3, fill: isCurrent ? accent : orange)
+                  rect(0, 1, max(width * num(c.xp) / max(topXp, 1), 6), 6, radius: 3, fill: isCurrent ? "#58CC02" : "#FF9600")
                 }
                 Text { text: cxs; style: small; color: muted; width: 56; align: end; maxLines: 1 }
               }
@@ -132,10 +185,36 @@ widget "duolingo" {
             Spacer { height: 1; fill: width; background: alpha(muted, 0.25) }
             Row {
               justify: end
-              Button { text: "abrir duolingo ↗"; onTap: androidApp("com.duolingo") }
+              Button { text: isEs ? "abrir duolingo ↗" : "open duolingo ↗"; color: "#58CC02"; onTap: androidApp("com.duolingo") }
             }
           }
         }
+      }
+
+      Spacer { size: 6 }
+      Text {
+        text: isEs ? "Creado por Madmasx" : "Created by Madmasx"
+        style: label
+        color: foreground
+      }
+      Row {
+        gap: 8
+        Button {
+          text: "X: @Madmasx"
+          weight: 1
+          onTap: url("https://x.com/Madmasx")
+        }
+        Button {
+          text: "Git: Madmasx"
+          weight: 1
+          onTap: url("https://github.com/Madmasx")
+        }
+      }
+      Spacer { size: 4 }
+      Button {
+        text: isEs ? "Cerrar" : "Close"
+        color: muted
+        onTap: close()
       }
     }
   }
