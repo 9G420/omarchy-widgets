@@ -4,6 +4,7 @@ simonschubert/hn
 simonschubert/climbing
 simonschubert/yoga
 simonschubert/linux-commands
+simonschubert/crypto-market
 simonschubert/earthquakes
 simonschubert/feeds
 simonschubert/github-trending
