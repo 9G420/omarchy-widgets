@@ -1,5 +1,5 @@
 app "hacker news" {
-  meta { owl: 8; description: "A Hacker News reader: the front page, newest, Ask and Show HN, with points and comments"; version: "1.0"; license: "MIT"; category: "news" }
+  meta { owl: 8; description: "A Hacker News reader: the front page, newest, Ask and Show HN, with points and comments"; version: "1.1"; license: "MIT"; category: "news" }
   title: "hacker news"
   icon: """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
     <path d="M6 19l8-10 8 10z" fill="currentColor"/>
@@ -22,6 +22,7 @@ app "hacker news" {
   }
 
   Column {
+    padding: [12, 0]
     gap: 10
     fill: true
     Row {

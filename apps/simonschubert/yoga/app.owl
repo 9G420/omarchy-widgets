@@ -1,5 +1,5 @@
 app "yoga" {
-  meta { owl: 8; description: "Guided, spoken yoga sessions with a timer for every pose: 26 sessions, 48 poses with how-tos and benefits, a daily streak and levels. No account needed."; version: "1.0"; license: "MIT"; category: "home" }
+  meta { owl: 8; description: "Guided, spoken yoga sessions with a timer for every pose: 26 sessions, 48 poses with how-tos and benefits, a daily streak and levels. No account needed."; version: "1.1"; license: "MIT"; category: "home" }
   title: "yoga"
   icon: """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
     <circle cx="24" cy="13" r="3.5"/>
@@ -175,6 +175,7 @@ app "yoga" {
   }
 
   Column {
+    padding: [12, 0]
     fill: true
     gap: 12
     if view == "menu" {

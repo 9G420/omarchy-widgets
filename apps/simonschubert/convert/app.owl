@@ -1,5 +1,5 @@
 app "convert" {
-  meta { owl: 8; description: "A unit converter: length, mass, temperature, volume, speed, area, data and time, every unit at once"; version: "1.0"; license: "MIT"; category: "productivity" }
+  meta { owl: 8; description: "A unit converter: length, mass, temperature, volume, speed, area, data and time, every unit at once"; version: "1.1"; license: "MIT"; category: "productivity" }
   title: "convert"
   icon: """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
     <path d="M6 15h33M31 7l8 8-8 8"/>
@@ -36,6 +36,7 @@ app "convert" {
   let to = rows.find(r => r.sym == pick.to && r.sym != from[0]) ?? rows.find(r => r.sym != from[0])
 
   Column {
+    padding: [12, 0]
     gap: 14
     fill: true
     Flow {
