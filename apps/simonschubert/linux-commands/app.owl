@@ -1,5 +1,5 @@
 app "linux commands" {
-  meta { owl: 8; description: "The Linux Command Library: 9,000+ commands with examples and options, cheat sheets and terminal tips"; version: "1.0"; license: "MIT"; category: "dev" }
+  meta { owl: 8; description: "The Linux Command Library: 9,000+ commands with examples and options, cheat sheets and terminal tips"; version: "1.1"; license: "MIT"; category: "dev" }
   title: sel != "" ? sel : basic != "" ? get(titles, basic, basic) : "linux commands"
   // Back goes from a page to the one before it (a command's "see also" chain), then to the list.
   back: sel != "" || basic != ""
@@ -12,6 +12,10 @@ app "linux commands" {
   let TIPS = "tips.md"
 
   state tab = "commands" persist
+  // The Linux Command Library app's own tab icons.
+  asset puzzle = base64"PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTIwLDljMCwtMS4xIC0wLjksLTIgLTIsLTJoLTMuMmMtMC40LDAgLTAuNiwtMC40IC0wLjQsLTAuN0MxNC43LDUuNyAxNSw1IDE1LDQuNUMxNSwzLjEgMTMuOSwyIDEyLjUsMlMxMCwzLjEgMTAsNC41YzAsMC41IDAuMywxLjIgMC42LDEuOEMxMC44LDYuNiAxMC41LDcgMTAuMiw3SDZDNC45LDcgNCw3LjkgNCw5bDAsMi40YzAsMC42IDAuNiwxLjEgMS4yLDAuOWMwLjUsLTAuMiAxLC0wLjMgMS4zLC0wLjNDNy45LDEyIDksMTMuMSA5LDE0LjVDOSwxNS45IDcuOSwxNyA2LjUsMTdjLTAuMywwIC0wLjgsLTAuMSAtMS4zLC0wLjNDNC42LDE2LjYgNCwxNyA0LDE3LjZMNCwyMGMwLDEuMSAwLjksMiAyLDJoMTJjMS4xLDAgMiwtMC45IDIsLTJWOXoiLz48L3N2Zz4="
+  asset idea = base64"PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTExLjkwNiwyQzguMjA2LDIuMSA1LjEsNS4wODggNSw4LjY4OEM0LjksMTEuMDg3IDYuMDEyLDEzLjI5NCA3LjgxMywxNC41OTRDOC42MTMsMTUuMTk0IDksMTYuMSA5LDE3TDE1LDE3QzE1LDE2LjEgMTUuMzk0LDE1LjE5NCAxNi4wOTQsMTQuNTk0QzE3Ljg5NCwxMy4zOTQgMTksMTEuMyAxOSw5QzE5LDUuMSAxNS44MDYsMS45IDExLjkwNiwyek05LDE4TDksMTlDOSwyMC4xNjkgOS42MjYsMjAuNjcyIDEwLjU2MywyMC44NzVDMTAuNzQzLDIxLjUgMTEuMzMzLDIyIDEyLDIyQzEyLjY2NywyMiAxMy4yNTcsMjEuNSAxMy40MzgsMjAuODc1QzE0LjM3NCwyMC42NzIgMTUsMjAuMTY5IDE1LDE5TDE1LDE4TDksMTh6Ii8+PC9zdmc+"
+  asset search = base64"PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTE1LjUsMTRoLTAuNzlsLTAuMjgsLTAuMjdDMTUuNDEsMTIuNTkgMTYsMTEuMTEgMTYsOS41IDE2LDUuOTEgMTMuMDksMyA5LjUsM1MzLDUuOTEgMyw5LjUgNS45MSwxNiA5LjUsMTZjMS42MSwwIDMuMDksLTAuNTkgNC4yMywtMS41N2wwLjI3LDAuMjh2MC43OWw1LDQuOTlMMjAuNDksMTlsLTQuOTksLTV6TTkuNSwxNEM3LjAxLDE0IDUsMTEuOTkgNSw5LjVTNy4wMSw1IDkuNSw1IDE0LDcuMDEgMTQsOS41IDExLjk5LDE0IDkuNSwxNHoiLz48L3N2Zz4="
   state q = ""
   // The command or basics page shown ("" for the lists), and the commands to go back to.
   state sel = ""
@@ -55,13 +59,23 @@ app "linux commands" {
   let titles = {aitools: "AI tools", backupimaging: "Backup & Imaging", compressionarchiving: "Compression & Archiving", cryptocurrencies: "Cryptocurrencies", emacstexteditor: "Emacs Text Editor", filesfolders: "Files & Folders", git: "Git", hackingtools: "Hacking tools", input: "Input", json: "JSON", microtexteditor: "Micro Text Editor", nanotexteditor: "Nano Text Editor", network: "Network", oneliners: "One-liners", packagemanager: "Package manager", picotexteditor: "Pico Text Editor", printing: "Printing", regularexpressions: "Regular Expressions", searchfind: "Search & Find", shellscripting: "Shell Scripting", ssh: "SSH", systemcontrol: "System control", systeminformation: "System information", systemrecovery: "System Recovery", terminalgames: "Terminal games", textprocessing: "Text Processing", tmux: "Tmux", usersgroups: "Users & Groups", videoaudio: "Video & Audio", vimtexteditor: "VIM Text Editor"}
   let basics = bidx == null ? [] : lines(bidx).map(l => replace(trim(l), ".md", "")).sortBy(b => lower(get(titles, b, b)))
 
-  component Tab(name) {
-    Text {
-      text: name; align: center; weight: 1; maxLines: 1; padding: [8, 8]; radius: 4 * corners
-      color: tab == name ? foreground : muted
-      background: tab == name ? alpha(foreground, 0.14) : null
-      border: 1; borderColor: tab == name ? alpha(foreground, 0.8) : alpha(muted, 0.4)
+  // A tab of the bottom bar, as in the mobile app: an icon in a pill when it's the one open, and its name.
+  component Tab(name, icon) {
+    Column {
+      weight: 1
+      align: center
+      gap: 4
+      padding: [0, 6]
       onTap: { tab = name; sel = ""; basic = ""; back = []; was = name != "tips" || url == TIPS ? null : page; url = name == "tips" ? TIPS : url; refresh(); haptic() }
+      Box {
+        align: center
+        width: 64
+        height: 32
+        radius: 16 * corners
+        background: tab == name ? alpha(foreground, 0.14) : null
+        Image { src: icon; size: 24; tint: tab == name ? foreground : muted }
+      }
+      Text { text: name; style: small; align: center; maxLines: 1; bold: tab == name; color: tab == name ? foreground : muted }
     }
   }
 
@@ -132,12 +146,6 @@ app "linux commands" {
   Column {
     gap: 10
     fill: true
-    Row {
-      gap: 6
-      Tab { name: "commands" }
-      Tab { name: "basics" }
-      Tab { name: "tips" }
-    }
 
     if tab == "commands" && sel == "" {
       Row {
@@ -241,5 +249,12 @@ app "linux commands" {
       }
     }
 
+    Box { height: 1; fill: width; background: alpha(muted, 0.25) }
+    Row {
+      gap: 0
+      Tab { name: "basics"; icon: puzzle }
+      Tab { name: "tips"; icon: idea }
+      Tab { name: "commands"; icon: search }
+    }
   }
 }
