@@ -1,0 +1,622 @@
+// opencode-burn: OpenCode free-model request quota, paced. It started as a
+// Burn Bar — a plain gauge of what today has cost — and grew a pacer, the
+// 5-hour window, and a way to browse the whole Zen lineup.
+//
+// Reads opencode's own session database for what you actually spent today, per
+// free model, then paces it against an even spend of the day. OpenCode publishes
+// 200 requests/day for the free tier (Big Pickle plus the promotional models),
+// but it does throttle as and when, and exposes no live quota API — so treat the
+// cap as the number you want to be measured against. It is a slider on the
+// screen behind the dial, and it sticks.
+//
+// The free lineup rotates (cat-jam-free and step-5-preview-free are already
+// gone), so the list of what you could switch to is fetched live.
+widget "opencode-burn" {
+  meta {
+    owl: 7
+    description: "Paces your OpenCode free-model request quota from opencode's own session database, flags 5-hour window bursts, and says which free model to switch to."
+    version: "1.2"
+    license: "MIT"
+    category: "dev"
+  }
+
+  size: 2x2
+
+  minSize: 1x1
+  padding: [12, 12, 12, 2]  // little at the bottom, so the dial and its label
+                            // fit inside one cell
+
+  requires { pacman: ["sqlite", "curl", "jq"] }
+
+  // ---- the numbers you may want to change ------------------------------
+  // the cap is a state, so the slider in the screen can change it and it
+  // sticks; the other two are `let`s, so they are edited here in the file
+  state dailyCap = 460 persist  // the quota to be measured against, requests per day
+  let margin = 5        // % of the cap that still counts as "on pace"
+
+  // Limits are not the same for every model. OpenCode's Go page (the paid tier)
+  // lists a 5-hour window per model and marks some as unlimited — Beam Free and
+  // LongCat 2.5 Preview Free are both ∞, while Kimi K3 is 110 per 5 hours and
+  // Muse Spark is 45,300. Check it against the free tier's own 200/day before
+  // trusting a number here: https://opencode.ai/go
+  // A model named in `unlimited` is never paced; the maps beat the numbers above.
+  let unlimited = ["beam-free", "longcat-2.5-preview-free"]
+  let capOverrides = {} // requests per day, e.g. { "kimi-k3": 110 }
+  let winOverrides = {} // requests per 5 hours, e.g. { "space-bunny-free": 3130 }
+
+  // the free tier is quoted at 200 requests/day, but the quota that actually
+  // gets enforced has been known to land anywhere in this band, so the graph
+  // draws both bounds. Set either to 0 to drop that line.
+  let capLow = 200
+  let capHigh = 750
+  let capMid = 450      // the figure the band is centred on, for the caption
+  let capMin = 50       // the ends of the daily rate limit control below
+  let capMax = 1000
+
+  // and a rolling window on top of the day, which is what actually throttles
+  let winCap = 200       // requests per rolling window
+
+  // the screen has the detail: today, every model, and the cap to change
+  onTap: screen()
+
+  // ---- today's usage, per model, straight out of opencode's database ----
+  state seenLineup = [] persist  // free model ids this widget has already met
+  state showAll = false persist  // the whole catalogue, or just what is free
+  state lineupBoot = false persist  // the first lineup we see is the baseline, not news
+  source db = cmd("""
+    db=$HOME/.local/share/opencode/opencode.db
+    if [ ! -r "$db" ]; then echo '{"day":0,"end":0,"now":0,"current":null,"models":[]}'; exit 0; fi
+    now=$(date +%s); day=$(date -d 'today 00:00' +%s); end=$(date -d 'tomorrow 00:00' +%s)
+    sqlite3 -readonly -cmd ".param init" -cmd ".param set :day $day" -cmd ".param set :now $now" -cmd ".param set :end $end" "$db" "
+    WITH RECURSIVE
+      slot(s) AS (SELECT 0 UNION ALL SELECT s+1 FROM slot WHERE s < 23),
+      agg AS (
+        SELECT json_extract(data,'\$.modelID') AS mid, count(*) AS n,
+               sum(coalesce(json_extract(data,'\$.tokens.total'),0)) AS t,
+               sum(time_created/1000 >= :now-3600) AS r,
+               sum(time_created/1000 >= :now-18000) AS w,
+               min(23, CAST((time_created/1000 - :day)/3600 AS INTEGER)) AS b
+        FROM message
+        WHERE json_extract(data,'\$.role') = 'assistant'
+          AND json_extract(data,'\$.modelID') IS NOT NULL
+          AND time_created/1000 >= :day
+        GROUP BY mid, b),
+      per AS (
+        SELECT a.mid AS mid, sum(a.n) AS u, sum(a.t) AS t, sum(a.r) AS r, sum(a.w) AS w,
+          json((SELECT json_group_array(coalesce(x.n, 0))
+                FROM slot s LEFT JOIN agg x ON x.mid = a.mid AND x.b = s.s)) AS sl
+        FROM agg a GROUP BY a.mid)
+    SELECT json_object(
+      'day', :day, 'end', :end, 'now', :now,
+      'current', (SELECT json_extract(data,'\$.modelID') FROM message
+                  WHERE json_extract(data,'\$.role') = 'assistant'
+                    AND json_extract(data,'\$.modelID') IS NOT NULL
+                  ORDER BY time_created DESC LIMIT 1),
+      'models', (SELECT json_group_array(json_object(
+                   'm', mid, 'used', u, 'tok', t, 'r1h', r, 'r5h', w, 'slots', json(sl))) FROM per));"
+  """) every 60s json timeout 20s
+
+  // ---- the free lineup, live: it rotates, so don't hard-code it --------
+// Zen's own catalogue says which models are free; models.dev says what each one
+// can do (vision, video, reasoning, tools, context). That second file is 5 MB,
+// so it is cached here and only refetched once a day. If either fetch fails the
+// widget carries on with the last good lineup.
+  source zen = cmd("""
+    cache=$HOME/.cache/owl-zen-models.json
+    mkdir -p "$HOME/.cache"
+    now=$(date +%s)
+    fetched=$(stat -c %Y "$cache" 2>/dev/null || echo 0)
+    if [ "$fetched" -eq 0 ] || [ $(( now - fetched )) -gt 86400 ]; then
+      curl -sf --max-time 60 https://models.dev/api.json -o "$cache.new" && mv "$cache.new" "$cache"
+    fi
+    [ -s "$cache" ] || echo '{}' > "$cache"
+    curl -sf --max-time 15 https://opencode.ai/zen/v1/models -o "$HOME/.cache/.owl-zen-lineup.json" || echo '{"data":[]}' > "$HOME/.cache/.owl-zen-lineup.json"
+    jq -cn --slurpfile m "$cache" '
+      ($m[0].opencode.models // {}) as $mm
+      | [ inputs.data[]?.id
+          | . as $id
+          | ($mm[$id] // {}) as $x
+          | { id: $id,
+              free: ($id | endswith("-free")) or $id == "big-pickle",
+              costIn: ($x.cost.input // null),
+              costOut: ($x.cost.output // null),
+              tags: ([ if (($x.modalities.input // []) | index("video")) then "video" else empty end,
+                       if (($x.modalities.input // []) | index("image")) then "image" else empty end,
+                       if $x.reasoning then "thinking" else empty end,
+                       if $x.tool_call then "tools" else empty end,
+                       if (($x.modalities.input // []) | index("audio")) then "audio" else empty end,
+                       if (($x.limit.context // 0) >= 1000000) then "1M ctx" else empty end ] | .[:3]) } ]' "$HOME/.cache/.owl-zen-lineup.json"
+""") every 30m json timeout 120s status
+
+  source now = clock every 1s
+
+  // ---- pace -----------------------------------------------------------
+  let dayFrac = (now - db.day) / max(1, db.end - db.day)
+  let rows = db.models
+  // the last lineup that worked, so a failed fetch or an offline phone still
+  // shows what is free instead of an empty list
+  // the free lineup is what the pacing is measured against; the whole
+  // catalogue is what you can browse
+  let freeIds = zen.ok ? zen.out.filter(z => z.free).map(z => z.id) : seenLineup
+  let allIds = zen.ok ? zen.out.map(z => z.id) : seenLineup
+  let live = freeIds
+  // NEW means it turned up in the lineup since the last time the widget looked,
+// and you have never run it. The first lineup after installing the widget is
+// the baseline, so nothing is flagged new on day one, and the lineup is folded
+// in on the same clock it refreshes on
+  let fresh = lineupBoot ? live.filter(id => seenLineup.indexOf(id) < 0) : []
+  every 30m {
+    seenLineup = lineupBoot ? unique(seenLineup + live) : live
+    lineupBoot = true
+  }
+
+  // every model worth listing: the free lineup or the whole catalogue, plus
+  // anything you have actually run today, so nothing you used drops off
+  let ids = unique((showAll ? allIds : freeIds) + rows.map(r => r.m))
+  let models = ids.map(id => ({
+    id: id,
+    name: replace(id, "-free", ""),
+    rank: ids.indexOf(id),
+    used: rows.find(r => r.m == id).used ?? 0,
+    tok: rows.find(r => r.m == id).tok ?? 0,
+    r1h: rows.find(r => r.m == id).r1h ?? 0,
+    r5h: rows.find(r => r.m == id).r5h ?? 0,
+    slots: rows.find(r => r.m == id).slots ?? [],
+    cap: get(capOverrides, id, dailyCap),
+    win: get(winOverrides, id, winCap),
+    isLive: live.indexOf(id) >= 0,
+    // free models are paced against the daily cap; paid ones have a price
+    isFree: freeIds.indexOf(id) >= 0,
+    isUnlimited: unlimited.indexOf(id) >= 0,
+    price: zen.ok ? join([zen.out.find(z => z.id == id).costIn, zen.out.find(z => z.id == id).costOut]
+                        .filter(c => c != null).map(c => fixed(c, 2)), " / ") : "",
+    isNew: live.indexOf(id) >= 0 && fresh.indexOf(id) >= 0 && (rows.find(r => r.m == id).used ?? 0) == 0,
+    // what it can do: vision, video, reasoning, tools
+    feats: zen.ok ? join(zen.out.find(z => z.id == id).tags ?? [], " · ") : ""
+  }))
+  let scored = models.map(m => ({
+    id: m.id, name: m.name, rank: m.rank, used: m.used, tok: m.tok, r1h: m.r1h, r5h: m.r5h, slots: m.slots, cap: m.cap,
+    isLive: m.isLive, isNew: m.isNew, isCur: m.id == db.current, feats: m.feats,
+    isFree: m.isFree, price: m.price, win: m.win, isUnlimited: m.isUnlimited,
+    even: m.cap * dayFrac,
+    left: m.cap - m.used,
+    banked: m.cap * dayFrac - m.used,
+    pct: m.used / max(1, m.cap) * 100,
+    bankedPct: (m.cap * dayFrac - m.used) / max(1, m.cap) * 100
+  }))
+
+  // what you're on right now, and how fast you're going
+  let cur = scored.find(m => m.id == db.current) ?? scored.find(m => m.used > 0)
+  let busy = cur ? cur.r1h > 0 : false
+  let rate = max(cur ? cur.r1h : 1, 1) / 3600
+
+  // the list to read: what you're on now, then what you've actually used today,
+  // most used first, then the rest of the lineup in the order OpenCode lists it
+  let ranked = scored.sortBy(m => (m.isCur ? -1000000 : 0) + (m.used > 0 ? -m.used * 1000 + m.rank : 1000 + m.rank / 1000))
+
+// an unlimited model has no ceiling to be a share of, so nothing is paced
+  let noLimit = cur ? cur.isUnlimited : false
+
+// how much of today's cap you have burned, and what that is called
+  let pctNow = cur && !noLimit ? cur.pct : 0
+  let verdict = noLimit ? "NO LIMIT"
+    : pctNow >= 100 ? "ON FUMES"
+    : pctNow >= 75 ? "SLOW DOWN"
+    : pctNow >= 50 ? "WATCH IT"
+    : pctNow >= 25 ? "GO FOR IT"
+    : "LET IT RIP"
+  let tone = noLimit ? cyan
+    : pctNow >= 100 ? red
+    : pctNow >= 75 ? orange
+    : pctNow >= 50 ? yellow
+    : pctNow >= 25 ? green
+    : cyan
+
+  // where you stand against an even spend of the day: the white mark on the bar
+  let spent = cur && !noLimit ? cur.left <= 0 : false
+  let over = cur && !noLimit && !spent && cur.bankedPct <= -margin ? true : false
+  let ahead = cur && !noLimit && !spent && !over && cur.bankedPct >= margin ? true : false
+
+  // how long until you are back on pace, if you stop now: an even day hands
+  // out cap/dayLen requests a second, so the excess ahead of that line drains
+  // at that rate. It reads the clock, so it ticks down every second instead of
+  // stepping once a source reloads.
+  let catchUp = cur && !noLimit ? max(0, cur.used - cur.cap * dayFrac) * max(1, db.end - db.day) / max(1, cur.cap) : 0
+
+  let reason = spent ? "back at ${fmtTime(db.end, 'HH:mm')}"
+    : over ? "come back in ${fmtDuration(catchUp)} · ${fmtTime(db.now + catchUp, 'HH:mm')}"
+    : ahead ? null      // the bank rides on the verdict line instead
+    : null              // on pace with nothing banked: nothing worth saying
+
+  // on the screen the bank rides along with the verdict, same size, and the
+  // line under it is left out rather than repeated
+  let bankText = ahead ? "${round(cur.bankedPct)}% in the bank" : null
+
+  // tallest hourly bucket today, so the day-shape bars use the full height
+  let peakSlot = max(1, cur ? (cur.slots.length ? cur.slots.sortBy(v => -v).first() : 1) : 1)
+
+  // OpenCode also enforces rolling windows, so the last five hours can run out
+  // long before the day does: the count right now, and the busiest five-hour
+  // stretch the day has already had, which is the one a rolling limiter trips on
+  let winPeak = cur ? range(20).map(i => sum(cur.slots.take(i + 5)) - sum(cur.slots.take(i))).sort().last() ?? 0 : 0
+  let overWin = cur && !noLimit ? max(cur.r5h, winPeak) >= cur.win : false
+  let peakHour = cur ? cur.slots.indexOf(peakSlot) : -1
+
+  // the window is the one that bites, so say so the moment you cross it, even
+  // if the day's numbers still look fine
+  when cur && !noLimit && cur.r5h >= cur.win {
+    notify("opencode", "${cur.name}: ${cur.r5h} requests in the last 5 hours, limit ${cur.win}")
+    haptic()
+  }
+
+  // which free model to use next: most budget left against the same clock,
+  // and only worth saying when it is clearly better, so the advice does not flap
+  // nothing to gain by leaving a model with no ceiling
+  let pick = cur && !noLimit ? scored.filter(m => m.isLive && m.left > 0).sortBy(m => -m.left).first() : null
+  let gain = pick && cur ? (pick.left - cur.left) / rate : 0
+  let gainText = gain < 3600 ? "${max(1, floor(gain / 60))}m"
+    : floor(gain % 3600 / 60) > 0 ? "${floor(gain / 3600)}h ${floor(gain % 3600 / 60)}m"
+    : "${floor(gain / 3600)}h"
+  let advice = cur == null ? ""
+    : noLimit ? "no limit on ${cur.name}"
+    : pick == null ? "no free model left today"
+    : pick.id == cur.id || pick.left <= max(1, cur.left) * 1.15 ? "tip: keep ${cur.name}"
+    : "tip: switch to ${pick.name}"
+  let adviceTone = noLimit ? cyan : pick == null ? red : pick.id == cur.id ? muted : accent
+  // "14 left" or "14 over", so the sentence reads when you are past the cap
+  let curLeft = cur ? cur.left > 0 ? "${cur.left} left" : "${-cur.left} over" : ""
+  // rides on the reason line: what you are on, and what moving would buy
+  let gainLine = pick && cur && pick.id != cur.id && pick.left > max(1, cur.left) * 1.15
+    ? " · ${cur.name} ${curLeft} +${gainText}"
+    : ""
+
+// ---- tile -----------------------------------------------------------
+  // one cell: a dial with the day's spend in it, and the whole day behind a
+  // tap. Sized off the tile minus its padding, with room left for the verdict
+  // under it, so it fits whatever box the launcher gives it
+  let dial = clamp(min((tileWidth ?? 76) - 24, (tileHeight ?? 76) - 34) * 0.92, 26, 132)
+  // "68%" fits the middle of the rings, "121%" does not, so the type gives way
+  let pctText = noLimit ? "∞" : cur ? "${round(cur.pct)}%" : "…"
+  let pctSize = dial * (len(pctText) >= 4 ? 0.2 : len(pctText) >= 3 ? 0.23 : 0.26)
+
+  Column {
+    fill: true
+    align: center
+    justify: center
+    gap: 2
+
+    Box {
+      width: dial
+      height: dial
+      align: center
+      Ring {
+        size: dial
+        value: cur ? clamp(cur.pct, 0, 100) / 100 : 0
+        color: cur ? tone : muted
+        track: alpha(border, 0.45)
+        thickness: max(4, dial * 0.09)
+        start: 225
+        sweep: 270
+        animate value: spring()
+      }
+      // inside it, the rolling five-hour window: it can be full while the day
+      // still looks fine, and when it is, it goes red
+      if (cur) {
+        Ring {
+          size: dial * 0.62
+          value: noLimit ? 0 : clamp(cur.r5h / max(1, cur.win), 0, 1)
+          color: overWin ? red : alpha(tone, 0.4)
+          track: alpha(border, 0.25)
+          thickness: max(2, dial * 0.045)
+          start: 225
+          sweep: 270
+          animate value: spring()
+        }
+      }
+      // the share of the cap in the middle of the dial
+      Text {
+        text: pctText
+        fontSize: pctSize
+        color: cur ? tone : muted
+        align: center
+        width: dial
+      }
+    }
+    Text {
+      text: cur ? verdict : "quiet"
+      fontSize: clamp(dial * 0.18, 7, 15)
+      color: cur ? tone : muted
+      align: center
+      maxLines: 1
+    }
+  }
+
+  // ---- screen ---------------------------------------------------------
+  screen {
+    title: "opencode burn"
+    Column {
+      scroll: true
+      gap: 12
+      fill: width
+
+      if cur == null {
+        Text { text: "nothing today"; style: title }
+        Text { text: "${dailyCap} requests a day, per free model"; style: small; color: muted }
+      } else {
+        // numbers first, then at most one line of words each
+        // the same day arc as the dial on the tile, beside its own numbers, so
+        // the two read as one thing
+        Row {
+          align: center
+          Box {
+            width: 62
+            height: 62
+            align: center
+            Ring {
+              size: 62
+              value: noLimit ? 0 : clamp(cur.pct, 0, 100) / 100
+              color: tone
+              track: alpha(border, 0.45)
+              thickness: max(4, 62 * 0.09)
+              start: 225
+              sweep: 270
+              animate value: spring()
+            }
+            // and the share of the cap inside it, as on the tile
+            Text {
+              text: noLimit ? "∞" : pctText
+              fontSize: 17
+              color: tone
+              align: center
+              width: 62
+            }
+          }
+          Text { text: noLimit ? "${cur.used} / ∞" : "${cur.used} / ${cur.cap}"; style: huge; color: tone; weight: 1; maxLines: 1 }
+        }
+
+        // the rate and tokens on the left, the rolling five-hour window on the
+        // right, in red once either the live count or the day's peak is full
+        Row {
+          align: center
+          // the inner arc from the tile again: the rolling five-hour window
+          Box {
+            width: 22
+            height: 22
+            align: center
+            Ring {
+              size: 18
+              value: noLimit ? 0 : clamp(cur.r5h / max(1, cur.win), 0, 1)
+              color: overWin ? red : alpha(tone, 0.4)
+              track: alpha(border, 0.25)
+              thickness: max(2, 18 * 0.1)
+              start: 225
+              sweep: 270
+              animate value: spring()
+            }
+          }
+          Text {
+            text: noLimit ? "no limit" : "5h ${cur.r5h}/${cur.win} · peak ${winPeak}/${cur.win}"
+            style: label
+            color: overWin ? red : muted
+            width: 184
+            maxLines: 1
+          }
+          Text {
+            text: busy ? "${round(rate * 3600)} req/h · ${fmtBytes(cur.tok)}"
+              : "idle · ${fmtBytes(cur.tok)}"
+            style: label
+            color: muted
+            weight: 1
+            align: end
+            maxLines: 1
+          }
+        }
+
+        Text { text: bankText ? "${verdict} · ${bankText}" : verdict; style: title; color: tone; maxLines: 2 }
+        // the reason, then what you are on and what switching would buy. On a
+        // plain on-pace day there is nothing to say, so the line goes away
+        Text {
+          text: "${reason ?? ""}${gainLine}"
+          style: small
+          color: muted
+          maxLines: 2
+          visible: reason != null
+        }
+
+// the day in one picture: when it was spent as bars behind, the running
+        // total in front of them, both against an even spend of the day
+        Canvas {
+          height: 190
+          fill: width
+          let w = width
+          let ticks = 11
+          let top = 10
+          let y0 = height - ticks          // the floor both are drawn on
+          let gh = y0 - top
+          let dayLen = max(1, db.end - db.day)
+          // the scale has to hold the whole band, or the ceiling is off the top;
+          // with no ceiling at all, it just has to hold what you spent
+          let peak = noLimit ? max(1, cur.used) * 1.12 : max(capHigh, cur.cap) * 1.04
+          let yLow = top + gh * (1 - clamp(capLow / peak, 0, 1))
+          let yHigh = top + gh * (1 - clamp(capHigh / peak, 0, 1))
+
+          // the band the quota actually falls in
+          if (capHigh > 0 && !noLimit) {
+            rect(0, yHigh, w, yLow - yHigh, fill: alpha(muted, 0.05))
+          }
+
+          // when it was spent: each hour against the busiest one
+          let bw = w / 24
+          for i in range(24) {
+            let v = cur.slots[i] ?? 0
+            let bh = max(2, gh * 0.58 * v / peakSlot)
+            // the hour that did it is drawn solid and counted above
+            rect(bw * i + 1, y0 - bh, bw - 2, bh, radius: 1.5 * corners, fill: alpha(tone, i == peakHour && v > 0 ? 0.8 : v > 0 ? 0.34 : 0.1))
+          }
+          if (peakHour >= 0 && peakSlot > 0) {
+            text("${peakSlot}", w * (peakHour + 0.5) / 24, y0 - gh * 0.58 - 5, size: 9, align: center, color: tone)
+          }
+
+          // an even spend of the whole day, dashed, then the cap as a flat line
+          for i in range(noLimit ? 24 : 0, 24, 2) {
+            line(w * i / 24, top + gh * (1 - clamp(cur.cap * i / 24 / peak, 0, 1)), w * (i + 1) / 24, top + gh * (1 - clamp(cur.cap * (i + 1) / 24 / peak, 0, 1)),
+                 stroke: alpha(muted, 0.8), width: 1)
+          }
+          if (!noLimit) {
+            line(0, top + gh * (1 - clamp(cur.cap / peak, 0, 1)), w, top + gh * (1 - clamp(cur.cap / peak, 0, 1)), stroke: alpha(muted, 0.7), width: 1)
+          }
+
+          // the running total: filled down to the floor, then stroked over it
+          let nowY = top + gh * (1 - clamp(cur.used / peak, 0, 1))
+          let pts = range(25).map(i => [w * i / 24, top + gh * (1 - clamp(sum(cur.slots.take(i + 1)) / peak, 0, 1))])
+          let drawn = pts.filter(p => p[0] <= w * dayFrac + 1) + [[w * dayFrac, nowY]]
+          if (drawn.length > 1) {
+            path(drawn + [[w * dayFrac, y0], [0, y0]], closed: true, fill: alpha(tone, 0.13))
+          }
+          for i in range(24) {
+            if (i < 24 * dayFrac) {
+              line(w * i / 24, top + gh * (1 - clamp(sum(cur.slots.take(i + 1)) / peak, 0, 1)),
+                   w * (i + 1) / 24, top + gh * (1 - clamp(sum(cur.slots.take(i + 2)) / peak, 0, 1)),
+                   stroke: tone, width: 2)
+            }
+          }
+
+          // where this rate runs you out, as a fraction of the way through the day
+          let outAt = clamp(dayFrac + (cur.left / rate) / dayLen, dayFrac, 1)
+          // the projection, stopping at the cap, drawn as fine dashes
+          for i in range(noLimit ? 20 : 0, 20, 2) {
+            line(w * (dayFrac + (outAt - dayFrac) * i / 20), top + gh * (1 - clamp(min(cur.cap, cur.used + (outAt - dayFrac) * dayLen * rate * i / 20) / peak, 0, 1)),
+                 w * (dayFrac + (outAt - dayFrac) * (i + 1) / 20), top + gh * (1 - clamp(min(cur.cap, cur.used + (outAt - dayFrac) * dayLen * rate * (i + 1) / 20) / peak, 0, 1)),
+                 stroke: alpha(tone, 0.6), width: 1)
+          }
+          // where you are now, and where the rate limit lands
+          circle(w * dayFrac, nowY, 4, fill: tone)
+          if (cur.left > 0 && !noLimit) {
+            let yOut = top + gh * (1 - clamp(cur.cap / peak, 0, 1))
+            // the drop from the limit back to now, dashed as well
+            for i in range(0, 8, 2) {
+              line(w * outAt, nowY + (yOut - nowY) * i / 8, w * outAt, nowY + (yOut - nowY) * (i + 1) / 8,
+                   stroke: alpha(tone, 0.5), width: 1)
+            }
+            circle(w * outAt, yOut, 4, fill: tone)
+            // named for what it is, sitting just above its own dot
+            text("rate limit", min(w * outAt, w - 42), yOut - 8, size: 9, align: center, color: tone)
+          }
+
+          // the clock under the bars
+          for i in range(4) {
+            text(fmtTime(db.day + i * 6 * 3600, "HH"), w * i * 6 / 24, y0 + 9,
+                 size: 9, align: i == 0 ? "start" : i == 3 ? "end" : "center", color: muted)
+          }
+        }
+      }
+
+      // what everything above is measured against, and where to change it
+      Text {
+        text: "based on ~${capMid} (${capLow}-${capHigh}) req/day and ${winCap} req/5hrs"
+        style: label
+        color: muted
+      }
+      Text { text: "tweak the rate limit below"; style: label; color: muted }
+
+      // what to do about it, with its own tally right-aligned
+      Row {
+        Text { text: advice; style: body; color: adviceTone; weight: 1; maxLines: 1 }
+        Text {
+          text: pick == null ? "" : "${pick.used} / ${pick.cap}"
+          style: body
+          color: adviceTone
+          width: 104
+          align: end
+          maxLines: 1
+        }
+      }
+
+      // free models or the whole catalogue; NEW means it was not in the free
+      // lineup the last time the widget looked
+      Row {
+        align: center
+        Text { text: "free"; style: label; color: showAll ? muted : accent; width: 34; onTap: showAll = false }
+        Text { text: "·"; style: label; color: muted; width: 9; align: center }
+        Text { text: "all"; style: label; color: showAll ? accent : muted; width: 27; onTap: showAll = true }
+        Text { text: "·"; style: label; color: muted; width: 9; align: center }
+        Text {
+          text: "${showAll ? allIds.length : freeIds.length} models"
+          style: label
+          color: muted
+          width: 86
+          maxLines: 1
+        }
+      }
+
+      for m in ranked {
+        Column {
+          gap: 3
+          fill: width
+          Row {
+            Text { text: m.name; style: body; color: m.isFree && m.left <= 0 ? red : m.isFree ? foreground : muted; weight: 1; maxLines: 1 }
+            Text { text: "NEW"; style: label; color: accent; width: 34; align: end; visible: m.isNew }
+            Text { text: !m.isFree ? "${m.used}" : m.isUnlimited ? "${m.used} / ∞" : "${m.used} / ${m.cap}"; style: body; width: 92; align: end; maxLines: 1 }
+          }
+          Progress {
+            value: clamp(m.pct, 0, 100)
+            // the same ladder the verdict uses, so the bars rank at a glance.
+            // A paid model has no daily cap to be a share of, so it gets none
+            color: m.pct >= 100 ? red : m.pct >= 75 ? orange : m.pct >= 50 ? yellow : m.pct >= 25 ? green : cyan
+            track: alpha(border, 0.4)
+            fill: width
+            height: 5
+            visible: m.isFree && !m.isUnlimited
+          }
+          // what it can do on the left; what is left of it, or what it costs
+          Row {
+            Text { text: m.feats; style: label; color: muted; weight: 1; maxLines: 1 }
+            Text {
+              text: !m.isFree ? "\$${m.price} per 1M"
+                : m.isUnlimited ? "no limit"
+                : m.isLive ? m.left > 0 ? "${m.left} left"
+                : "spent until ${fmtTime(db.end, 'HH:mm')}"
+                : "not free any more"
+              style: label
+              color: muted
+              width: 132
+              align: end
+              maxLines: 1
+            }
+          }
+        }
+      }
+
+      // the rate limit, last on the page: editable on the phone, kept across
+      // restarts, with a mark at the middle of the band to steer by
+      Row {
+        align: center
+        gap: 6
+        Text { text: "daily rate limit"; style: label; fontSize: 10; color: muted; width: 104; maxLines: 1; offset: [0, 7] }
+        // the mark sits above the track; the label and the value are nudged
+        // down so all three still read on the slider's own line
+        Box {
+          weight: 1
+          height: 42
+          Slider {
+            value: dailyCap
+            min: capMin
+            max: capMax
+            step: 10
+            height: 28
+            fill: width
+            offset: [0, 14]
+            onChange: dailyCap = value
+          }
+          Canvas {
+            fill: true
+            let x = width * (capMid - capMin) / (capMax - capMin)
+            line(x, 14, x, 42, stroke: alpha(foreground, 0.5), width: 2)
+            text("${capMid}", x, 8, size: 9, align: center, color: muted)
+          }
+        }
+        Text { text: "${dailyCap}"; style: label; color: accent; width: 36; align: end; offset: [0, 7] }
+      }
+    }
+  }
+}
