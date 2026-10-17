@@ -23,7 +23,7 @@ const program = Owl.compile(src)
 const host = {
   theme: n => fx.theme[n] === undefined ? null : fx.theme[n] >>> 0,
   tile: n => fx.tile[n] === undefined ? null : fx.tile[n],
-  act() {}, runInto() {}, report: m => process.stderr.write('report: ' + m + '\n'), changed() {}
+  act() {}, runInto() {}, post() {}, report: m => process.stderr.write('report: ' + m + '\n'), changed() {}
 }
 const inst = new Owl.Instance(program, host, {})
 inst.time = fx.time

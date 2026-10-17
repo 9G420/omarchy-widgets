@@ -274,6 +274,8 @@ Item {
     if (!root.active) return
     if (root.kind === "android.battery") root.widget.sourceObject(root.spec.slot, root.battery)
     if (root.kind === "android.notifications") root.widget.sourceObject(root.spec.slot, [])
+    // No Android apps on a desktop.
+    if (root.kind === "android.apps") root.widget.sourceObject(root.spec.slot, [])
     if (root.kind === "android.alarm") root.widget.sourceObject(root.spec.slot, root.noAlarm)
     if (root.kind === "android.media") root.widget.sourceObject(root.spec.slot, root.media)
   }
@@ -281,6 +283,7 @@ Item {
     if (!root.active) return
     if (root.kind === "android.battery") root.widget.sourceObject(root.spec.slot, root.battery)
     if (root.kind === "android.notifications") root.widget.sourceObject(root.spec.slot, [])
+    if (root.kind === "android.apps") root.widget.sourceObject(root.spec.slot, [])
     if (root.kind === "android.alarm") root.widget.sourceObject(root.spec.slot, root.noAlarm)
     if (root.kind === "android.media") root.widget.sourceObject(root.spec.slot, root.media)
   }

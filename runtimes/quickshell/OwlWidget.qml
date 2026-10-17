@@ -16,6 +16,7 @@ import QtQml
 import Quickshell
 import Quickshell.Io
 import "Owl.js" as Owl
+import "OwlLayout.js" as L
 
 Item {
   id: root
@@ -180,6 +181,7 @@ Item {
     },
     act: function(name, args) { root.act(name, args) },
     runInto: function(command, slot) { root.runInto(command, slot) },
+    post: function(url, body, headers, slot) { root.post(url, body, headers, slot) },
     report: function(message) { root.report(message) },
     changed: function() { root.changed() }
   })
@@ -284,7 +286,7 @@ Item {
 
   // ------------------------------------------------------------ actions
 
-  // run(), refresh(), screen() and close() are the widget's own; the rest
+  // run(), refresh(), screen(), close() and sound() are the widget's own; the rest
   // -- terminal, app, url, media, launcher... -- are the host's.
   function act(name, args) {
     var a = args || []
@@ -293,6 +295,7 @@ Item {
     case "refresh": return root.refresh()
     case "screen": return root.openScreen()
     case "close": return root.closeScreen()
+    case "sound": return a[0] === undefined || a[0] === null ? undefined : root.sound(Owl.show(a[0]))
     }
     root.host.act(root, name, a.map(function(v) { return v === null || v === undefined ? null : Owl.show(v) }))
   }
@@ -304,6 +307,49 @@ Item {
   }
 
   property var runs: []
+
+  // post(url, body, headers): a map or list body goes as JSON, anything else as
+  // its text. With a slot, the answer lands there as {code, ok, out}; a 2xx
+  // refreshes the widget's sources, since what it changed shows in them.
+  function post(url, body, headers, slot) {
+    var json = Array.isArray(body) || body instanceof Map
+    var xhr = new XMLHttpRequest()
+    xhr.onreadystatechange = function() {
+      if (xhr.readyState !== XMLHttpRequest.DONE) return
+      var ok = xhr.status >= 200 && xhr.status < 300
+      if (!ok && slot === null) root.report("post: HTTP " + xhr.status + " from " + url)
+      if (slot !== null && root.instance) {
+        var text = xhr.responseText || ""
+        var out = null
+        if (text !== "") try { out = Owl.parseJson(text.trim()) } catch (e) { out = text }
+        root.instance.setState(slot, new Map([["code", xhr.status], ["ok", ok], ["out", out]]))
+      }
+      if (ok) root.refresh()
+    }
+    xhr.open("POST", url)
+    var typed = false
+    for (var k in headers) {
+      xhr.setRequestHeader(k, String(headers[k]))
+      if (k.toLowerCase() === "content-type") typed = true
+    }
+    if (json && !typed) xhr.setRequestHeader("Content-Type", "application/json")
+    xhr.send(json ? JSON.stringify(Owl.toJson(body)) : body === null ? "" : Owl.show(body))
+  }
+
+  // sound(...): one at a time, a new one in place of the last; "stop" stops it.
+  // mpv plays URLs and files; an asset's data: URL is decoded into it on stdin.
+  function sound(src) {
+    soundPlayer.running = false
+    if (src === "stop" || src === "") return
+    var file = L.url(src, root.home)
+    var data = /^data:[^;,]*;base64,/.exec(file)
+    soundPlayer.command = data
+      ? ["bash", "-c", "base64 -d <<<\"$1\" | mpv --no-video --really-quiet -", "sound", file.slice(data[0].length)]
+      : ["mpv", "--no-video", "--really-quiet", "--", file.replace(/^file:\/\//, "")]
+    soundPlayer.running = true
+  }
+
+  Process { id: soundPlayer }
 
   function runAndRefresh(command) {
     var p = runner.createObject(root, { command: ["bash", "-c", command], slot: -1 })

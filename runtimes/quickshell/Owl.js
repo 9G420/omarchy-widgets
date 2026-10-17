@@ -963,7 +963,7 @@ var CONSTANTS = { pi: Math.PI, transparent: new Col(null, 0, 1) }
 var ACTIONS = {
   terminal: [1, 2], app: [1, 1], run: [1, 1], url: [1, 1], launcher: [1, 1], refresh: [0, 1],
   media: [1, 1], androidApp: [1, 1], copy: [1, 1], notify: [1, 2], volume: [1, 1],
-  notification: [2, 2], screen: [0, 0], close: [0, 0], torch: [1, 1], share: [1, 1], haptic: [0, 0]
+  notification: [2, 2], screen: [0, 0], close: [0, 0], torch: [1, 1], share: [1, 1], haptic: [0, 0], sound: [1, 1], post: [1, 3]
 }
 
 function Args(args, host) {
@@ -1347,6 +1347,14 @@ var BUILTINS = {
     var v = a.get(0)
     return "'" + (v === null ? "" : text(v)).split("'").join("'\\''") + "'"
   }),
+  // owl 8: a value as one URL component, for http(...) URLs put together while the widget runs.
+  enc: B(1, 1, function(a) {
+    var v = a.get(0)
+    // As java's URLEncoder, with %20 for spaces: only letters, digits and . - * _ stay as they are.
+    return encodeURIComponent(v === null ? "" : text(v)).replace(/[!'()~]/g, function(c) {
+      return "%" + c.charCodeAt(0).toString(16).toUpperCase()
+    })
+  }),
   startsWith: B(2, 2, function(a) { return a.str(0).indexOf(a.str(1)) === 0 }),
   endsWith: B(2, 2, function(a) {
     var s = a.str(0), e = a.str(1)
@@ -1615,7 +1623,7 @@ var OPERATORS = {
 
 // ---------------------------------------------------------------- compiler
 
-var LEVEL = 7
+var LEVEL = 8
 var MAX_NODES = 500
 var MAX_SCREEN_NODES = 1000
 var MAX_ASSET_BYTES = 2097152
@@ -1674,12 +1682,15 @@ SINCE.corners = 6
 SINCE["Input.focus"] = 6
 // owl 7: more of the phone: the next alarm, its modes, the torch, the share sheet, haptics.
 ;["android.alarm", "android.modes", "torch", "share", "haptic"].forEach(function(k) { SINCE[k] = 7 })
+// owl 8: the phone's apps as a list; images and sounds from the web; values in URLs; sending.
+var WEB_IMAGE = "an image from the web"
+;["android.apps", WEB_IMAGE, "sound", "enc", "post"].forEach(function(k) { SINCE[k] = 8 })
 
 var MANAGERS = { pacman: /^[a-z0-9@_+][a-z0-9@._+-]*$/ }
 var HANDLER_PARAMS = { onTap: ["x", "y"], onDrag: ["dx", "dy", "x", "y"], onChange: ["value"], onSubmit: ["value"] }
 var HANDLER_KINDS = { onChange: ["Slider", "Input"], onSubmit: ["Input"] }
 var TRIGGER_PARAMS = { on: ["value", "old"] }
-var ANDROID = ["battery", "device", "media", "notifications", "volume", "system", "alarm", "modes"]
+var ANDROID = ["battery", "device", "media", "notifications", "volume", "system", "alarm", "modes", "apps"]
 var MEDIA = ["toggle", "play", "pause", "next", "previous", "open"]
 var VOLUME = ["up", "down", "mute", "unmute", "toggle"]
 var TORCH = ["on", "off", "toggle"]
@@ -1994,6 +2005,7 @@ Compiler.prototype = {
         this.fail("unknown android source '" + e.name + "' (" + ANDROID.join(", ") + ")", e.pos)
       this.since("android." + e.name, e.pos)
       if (e.name === "notifications") this.commands.push("read Android notifications (apps, titles and text)")
+      if (e.name === "apps") this.commands.push("read installed Android apps (names, packages and icons)")
       src.kind = "android." + e.name
       src.every = Math.max(every === null ? 60 : every, 1)
       src.timeout = 0
@@ -2147,6 +2159,7 @@ Compiler.prototype = {
       if (DRAW_NAMED.indexOf(n[0]) < 0) self.fail("unknown option '" + n[0] + "' (" + DRAW_NAMED.join(", ") + ")", n[1].pos)
     })
     this.since(c.name, c.pos)
+    if (c.name === "image") this.webFile(c.args[0], scope, "image")
     this.nodes++
     var args = c.args.map(function(a) { return self.ex(a, scope) })
     var named = {}
@@ -2203,6 +2216,10 @@ Compiler.prototype = {
         : command.k && typeof command.c === "string" ? command.c : "Terminal command built from widget values")
       this.guest = true
     }
+    if (n.type === "Image") {
+      var src = body.props.filter(function(p) { return p.name === "src" })[0]
+      if (src) this.webFile(src.value, scope, "image")
+    }
     if (n.type === "Shader") this.animated = true
     if (kind[1] === "none" && body.items.length) this.fail(n.type + " can't hold other nodes", body.items[0].pos)
     var children = kind[1] === "none" ? []
@@ -2237,7 +2254,8 @@ Compiler.prototype = {
   enumOrNull: function(name, e, scope) {
     var options = ENUMS[name]
     if (!options) return null
-    if (e.k === "name" && options.indexOf(e.name) >= 0 && this.lookup(e.name, scope) === null) return evOf(e.name)
+    // The word, even when a let, state, source or parameter has its name.
+    if (e.k === "name" && options.indexOf(e.name) >= 0) return evOf(e.name)
     return null
   },
 
@@ -2261,10 +2279,12 @@ Compiler.prototype = {
           self.guest = true
           return function(env) { env.host.runInto(show(run(command, env)), slot) }
         }
+        if (call && call.name === "post") return self.post(call, inner, slot)
         var v = self.ex(s.value, inner)
         return function(env) { env.host.write(slot, run(v, env)) }
       }
       var c = s.call
+      if (c.name === "post") return self.post(c, inner, null)
       var arity = ACTIONS[c.name]
       if (!arity) self.fail("'" + c.name + "' isn't an action (" + Object.keys(ACTIONS).join(", ") + ")", c.pos)
       if (c.args.length < arity[0] || c.args.length > arity[1])
@@ -2279,6 +2299,7 @@ Compiler.prototype = {
       if (c.name === "notification" && first !== null && NOTIFICATION.indexOf(first) < 0)
         self.fail("notification takes " + NOTIFICATION.join(", ") + " and a notification's key", c.pos)
       self.since(c.name, c.pos)
+      if (c.name === "sound") self.webFile(c.args[0], inner, "sound")
       if ((c.name === "screen" || c.name === "close") && self.screenAction === null) self.screenAction = c.pos
       if (c.name === "run" || c.name === "terminal" || c.name === "app") {
         self.commands.push(first !== null ? first : c.name + "(…) built from widget values")
@@ -2299,6 +2320,84 @@ Compiler.prototype = {
         }
       }
     }
+  },
+
+  // post(url, body, headers), or x = post(...) to get the answer into the state slot: an HTTP POST.
+  post: function(call, scope, slot) {
+    var self = this
+    if (call.args.length < 1 || call.args.length > 3 || call.named.length)
+      this.fail("post(\"https://...\", body, headers) takes a URL, optionally a body and a map of headers", call.pos)
+    this.since("post", call.pos)
+    var url = this.ex(call.args[0], scope)
+    if (url.k && typeof url.c === "string" && url.c.indexOf("https://") !== 0 && url.c.indexOf("http://") !== 0)
+      this.fail("post takes an http:// or https:// URL", call.args[0].pos)
+    this.commands.push("http POST " + (url.k && typeof url.c === "string" ? url.c : "(a URL built from widget values)"))
+    var body = call.args.length > 1 ? this.ex(call.args[1], scope) : null
+    var headers = call.args.length > 2 ? this.ex(call.args[2], scope) : null
+    return function(env) {
+      var target = run(url, env)
+      // Like any action whose value hasn't loaded: a null URL sends nothing.
+      if (target === null) return
+      var h = headers ? run(headers, env) : null
+      env.host.post(show(target), body ? run(body, env) : null, h instanceof Map ? toJson(h) : {}, slot)
+    }
+  },
+
+  // An image src or a sound that is, or starts as, an https URL: it needs owl 8, and it's listed like http(...).
+  webFile: function(e, s, what) {
+    // Each way it can turn out: sound(voice ? "https://..." : null) plays that URL.
+    if (e.k === "cond") {
+      this.webFile(e.a, s, what)
+      this.webFile(e.b, s, what)
+      return
+    }
+    var whole = this.constText(e, s)
+    var start = whole !== null ? whole : this.constantStart(e, s)
+    if (start.indexOf("http://") === 0) this.fail(what + "s load over https only", e.pos)
+    if (start.indexOf("https://") !== 0) return
+    if (what === "image") this.since(WEB_IMAGE, e.pos)
+    this.commands.push(what + " GET " + (whole !== null ? whole : start + "…"))
+  },
+
+  // The text e starts with whatever its values turn out to be: "https://x.test/" for "https://x.test/${id}.svg".
+  constantStart: function(e, s) {
+    if (e.k === "interp") {
+      var out = ""
+      for (var i = 0; i < e.parts.length; i++) {
+        var c = this.constText(e.parts[i], s)
+        if (c === null) return out + this.constantStart(e.parts[i], s)
+        out += c
+      }
+      return out
+    }
+    if (e.k === "bin") {
+      if (e.op !== "+") return ""
+      var a = this.constText(e.a, s)
+      return a !== null ? a + this.constantStart(e.b, s) : this.constantStart(e.a, s)
+    }
+    var t = this.constText(e, s)
+    return t === null ? "" : t
+  },
+
+  // e's text if it's fixed: a literal, a name for a top-level let that is one, or "${base}a.svg".
+  constText: function(e, s) {
+    if (e.k === "interp") {
+      var out = ""
+      for (var i = 0; i < e.parts.length; i++) {
+        var p = this.constText(e.parts[i], s)
+        if (p === null) return null
+        out += p
+      }
+      return out
+    }
+    var ev = this.ex(e, s)
+    var c = ev.k ? ev.c : null
+    if (!ev.k && e.k === "name") {
+      var ref = this.lookup(e.name, s)
+      var g = ref && !ref.local ? this.globals[ref.slot] : null
+      if (g && g.type === "let" && g.value.k) c = g.value.c
+    }
+    return typeof c === "string" || typeof c === "number" ? text(c) : null
   },
 
   lookup: function(name, scope) {
@@ -2419,6 +2518,8 @@ Compiler.prototype = {
       this.animated = true
       return new Ev(function(env) { return env.host.time() })
     }
+    // Apps only, and this runtime has no apps: a widget's screen ends above the navigation bar.
+    if (e.name === "screenInset") this.fail("screenInset is for apps with edge: true; a widget's screen ends above the navigation bar", e.pos)
     if (TILE.indexOf(e.name) >= 0 || e.name === "linux") {
       this.since(e.name, e.pos)
       var tn = e.name
@@ -2498,6 +2599,8 @@ function formatError(src, e) {
 //                     screenHeight and linux
 //   act(name, args)   terminal(), url(), run() and the rest
 //   runInto(cmd, slot) runs a command and later calls setState(slot, output)
+//   post(url, body, headers, slot) sends an HTTP POST; with a slot, it later
+//                     calls setState(slot, {code, ok, out})
 //   report(message)   a runtime error, for the widget's error log
 //   changed()         something a render reads has changed
 //
@@ -2568,6 +2671,7 @@ Instance.prototype = {
       },
       act: function(name, args) { self.host.act(name, args) },
       runInto: function(cmd, slot) { self.host.runInto(cmd, slot) },
+      post: function(url, body, headers, slot) { self.host.post(url, body, headers, slot) },
       report: function(msg) { self.host.report(msg) }
     }
   },

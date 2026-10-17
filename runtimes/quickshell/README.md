@@ -80,7 +80,9 @@ Where it differs, because Android is not here:
 - **Terminal** is a terminal of its own -- a pseudo-terminal, its output as
   text, a line to type into -- not an embedded foot window, which only a
   compositor can do. Full-screen programs open in a real terminal.
-- **android.notifications** is an empty list; **androidApp()** and
-  **notification()** report that there is no Android.
+- **android.notifications** and **android.apps** are empty lists;
+  **androidApp()** and **notification()** report that there is no Android.
+- **sound()** plays through `mpv`, and images and sounds from the web are
+  fetched each time instead of kept for a day.
 - **`e` in `fmtTime`** counts from Monday: the jar declares it and leaves
   its meaning to the launcher, which is not published.
