@@ -3,10 +3,16 @@ widget "simkl" {
   order: 15
   size: 6x4
   minSize: 3x4
-  meta { owl: 6; description: "Your next week of TV, anime and movies from Simkl: tile, posters and full screen. Tap login, approve the code on simkl.com, done"; version: "1.3"; license: "MIT"; category: "media" }
+  meta { owl: 8; description: "Your next week of TV, anime and movies from Simkl: tile, posters and full screen. Tap login, approve the code on simkl.com, done"; version: "1.4"; license: "MIT"; category: "time" }
   requires { pacman: ["python", "curl"] }
 
   let clientId = "95a4064f1187b0dd4846827dbbf0268d12ea8cec58ca89e323021f87eda269ed"
+
+  // The play button opens whichever app the user picks in the screen's settings, from
+  // the installed apps. "" means auto (Nuvio, else Stremio, else none).
+  state player = "" persist
+  state appQuery = ""
+  state screenView = "upcoming"
 
   // The helper writes itself to the cache on first run (and after this file changes).
   source boot = cmd("""
@@ -242,44 +248,71 @@ def api(path, cid, token, extra=""):
     return json.loads(raw or b"null")
 
 
-def item_simkl_id(item):
-    if not isinstance(item, dict):
-        return None
+def fetch_user(cid, token):
+    # The display name for the header; a failure here just leaves it blank.
+    try:
+        raw, _ = http_get("%s/users/settings?%s" % (API, base_params(cid)),
+                          {"User-Agent": UA, "Authorization": "Bearer " + token})
+        d = json.loads(raw or b"null")
+        if isinstance(d, dict):
+            return (d.get("user") or {}).get("name") or ""
+    except Exception:
+        pass
+    return ""
+
+
+def item_node(item):
     node = item
-    if not isinstance(node.get("ids"), dict):
+    if isinstance(node, dict):
         for k in ("show", "movie", "anime", "tv_show"):
             if isinstance(node.get(k), dict):
-                node = node[k]
-                break
+                return node[k]
+    return node
+
+
+def item_simkl_id(item):
+    node = item_node(item)
+    if not isinstance(node, dict):
+        return None
     ids = node.get("ids")
     if isinstance(ids, dict) and ids.get("simkl") is not None:
         return ids["simkl"]
     return node.get("simkl_id") or node.get("id")
 
 
-def watchlist_ids(cid, token):
+def watchlist(cid, token):
+    # One request per list, full enough to carry each item's imdb id (a few hundred
+    # KB in all), so the play links need no second lookup per show.
     ids = {"shows": set(), "anime": set(), "movies": set()}
+    imdb = {}
     tasks = [(typ, st) for typ, statuses in STATUSES.items() for st in statuses]
 
     def one(task):
         typ, st = task
         try:
-            data = api("/sync/all-items/%s/%s" % (typ, st), cid, token,
-                       "extended=simkl_ids_only")
+            data = api("/sync/all-items/%s/%s" % (typ, st), cid, token, "extended=full")
         except urllib.error.HTTPError as e:
             if e.code == 401:
                 raise
             return typ, []
         if not isinstance(data, dict):
             return typ, []
-        return typ, [item_simkl_id(i) for i in (data.get(typ) or [])]
+        out = []
+        for item in (data.get(typ) or []):
+            sid = item_simkl_id(item)
+            if sid is None:
+                continue
+            ex = item_node(item).get("ids")
+            out.append((int(sid), ex.get("imdb") if isinstance(ex, dict) else None))
+        return typ, out
 
     with ThreadPoolExecutor(max_workers=len(tasks)) as ex:
-        for typ, sids in ex.map(one, tasks):
-            for sid in sids:
-                if sid is not None:
-                    ids[typ].add(int(sid))
-    return ids
+        for typ, rows in ex.map(one, tasks):
+            for sid, im in rows:
+                ids[typ].add(sid)
+                if im:
+                    imdb[sid] = im
+    return ids, imdb
 
 
 def calendar(kind):
@@ -323,14 +356,18 @@ def cmd_fetch(days, cid):
     refresh_if_needed(cid)
     token = read_secret(TOKEN_F)
     try:
-        ids = watchlist_ids(cid, token)
+        ids, imdb = watchlist(cid, token)
     except urllib.error.HTTPError as e:
         if e.code != 401:
             raise
         write_secret(EXPIRES_F, "0")
         refresh_if_needed(cid)
-        ids = watchlist_ids(cid, read_secret(TOKEN_F))
+        ids, imdb = watchlist(cid, read_secret(TOKEN_F))
+    name = fetch_user(cid, read_secret(TOKEN_F))
     now = time.time()
+    # Start at midnight so today's releases stay listed: the widget shows a play
+    # button on them instead of dropping them once their time has passed.
+    today0 = datetime.fromtimestamp(now).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
     end = now + days * 86400
     kinds = [CAL_FILE[t] for t in CAL_FILE if ids[t]]
     cals = {}
@@ -352,7 +389,7 @@ def cmd_fetch(days, cid):
                 t = datetime.fromisoformat(e["date"].replace("Z", "+00:00")).timestamp()
             except Exception:
                 continue
-            if not (now <= t <= end):
+            if not (today0 <= t <= end):
                 continue
             show = meta.get(str(sid), {})
             ep = e.get("episode") or {}
@@ -369,9 +406,14 @@ def cmd_fetch(days, cid):
             url = show.get("url") or ""
             if url and not url.startswith("http"):
                 url = "https://simkl.com" + url
+            meta_ids = show.get("ids") if isinstance(show.get("ids"), dict) else {}
             items.append({"t": int(t), "kind": typ, "title": show.get("title") or "?",
                           "sub": sub, "rel": show.get("poster"), "sid": sid,
-                          "url": url, "fin": FINALE.get(e.get("finale_type"), "")})
+                          "url": url, "fin": FINALE.get(e.get("finale_type"), ""),
+                          "type": "movie" if kind == "movie_release" else "series",
+                          "imdb": imdb.get(int(sid)) or meta_ids.get("imdb") or "",
+                          "tmdb": meta_ids.get("tmdb") or "",
+                          "season": ep.get("season"), "episode": ep.get("episode")})
     items.sort(key=lambda x: x["t"])
     if items:
         with ThreadPoolExecutor(max_workers=min(8, len(items))) as ex:
@@ -381,7 +423,7 @@ def cmd_fetch(days, cid):
     for it in items:
         it.pop("rel", None)
         it.pop("sid", None)
-    return items
+    return {"user": name, "items": items}
 
 
 def main():
@@ -397,11 +439,11 @@ def main():
     if cmd == "logout":
         return cmd_logout()
     if cmd == "fetch" and len(a) >= 3:
-        items = cmd_fetch(int(a[1]), a[2])
-        if items is None:
-            print("[]")
+        result = cmd_fetch(int(a[1]), a[2])
+        if result is None:
+            print('{"items": []}')
             return 1
-        print(json.dumps(items))
+        print(json.dumps(result))
         return 0
     log("bad arguments")
     return 2
@@ -417,8 +459,13 @@ echo ok
 
   source dev = file("~/.config/omarchy-simkl/device.json") json
   source tok = file("~/.config/omarchy-simkl/token")
+  source now = clock every 1m
 
-  source up = cmd("[ -s ~/.config/omarchy-simkl/token ] && python3 ~/.cache/omalauncher-simkl/simkl.py fetch 7 ${sh(clientId)} || echo '[]'") every 4h json timeout 90s
+  // android.apps lists the phone's launchable apps; the screen's settings let the user
+  // pick which one the play button opens, since players take different deep links.
+  source apps = android.apps every 30m
+
+  source up = cmd("[ -s ~/.config/omarchy-simkl/token ] && python3 ~/.cache/omalauncher-simkl/simkl.py fetch 7 ${sh(clientId)} || echo '{}'") every 4h json timeout 90s
 
   // device-start polls Simkl itself until the code is approved, denied or expires,
   // then drops the pending code. It's detached from run()'s 30s cap, so the tile
@@ -429,13 +476,42 @@ echo ok
   let signedIn = tok == null ? null : trim(tok) != ""
   on signedIn { refresh() }
   let loading = up == null
-  let items = up ?? []
+  let items = up.items ?? []
+  let user = up.user ?? ""
   let code = dev.user_code ?? ""
   let pinUrl = dev.verification_uri_complete ?? "https://simkl.com/pin"
 
   when logged { refresh() }
 
+  let today = fmtTime(now ?? 0, "yyyy-MM-dd")
+
+  // The player the play button uses: the picked app if it's still installed, else Nuvio,
+  // else Stremio, else none. Stremio takes an exact episode, Nuvio only the show page.
+  let appsList = apps ?? []
+  let hasStremio = appsList.any(a => a.package == "com.stremio.one")
+  let hasNuvio = appsList.any(a => a.package == "com.nuvio.app" || a.package == "com.nuvio.enhanced")
+  let playerPkg = player != "" && appsList.any(a => a.package == player) ? player : (hasNuvio ? "com.nuvio.app" : hasStremio ? "com.stremio.one" : "")
+  let isStremio = playerPkg == "com.stremio.one"
+  let isNuvio = playerPkg == "com.nuvio.app" || playerPkg == "com.nuvio.enhanced"
+
+  // Player-ish apps shown by default in the settings picker; anything else is still
+  // reachable by typing in the search box.
+  let knownPlayers = ["com.stremio.one", "com.nuvio.app", "com.nuvio.enhanced", "org.videolan.vlc", "org.xbmc.kodi", "com.mxtech.videoplayer.ad", "com.mxtech.videoplayer.pro", "com.brouken.player", "is.xyz.mpv", "com.plexapp.android", "org.jellyfin.mobile", "org.jellyfin.androidtv", "com.mb.android", "com.netflix.mediaclient", "com.amazon.avod.thirdpartyclient", "com.disney.disneyplus", "com.google.android.youtube"]
+
   component Show(e) {
+    let im = e.imdb ?? ""
+    let tm = e.tmdb ?? ""
+    // Only today's items get a play button: they've aired (or air today), so the
+    // player picked in settings can open straight to them. Stremio opens the exact
+    // episode, Nuvio the show page, any other app is just opened.
+    let isToday = fmtTime(e.t, "yyyy-MM-dd") == today
+    let nid = im != "" ? im : (tm != "" ? "tmdb:" + tm : "")
+    let videoId = e.season == null ? im : im + ":" + str(e.season) + ":" + str(e.episode)
+    let stremioUrl = e.type == "movie" ? "stremio:///detail/movie/" + im + "/" + im : "stremio:///detail/series/" + im + "/" + videoId
+    let nuvioUrl = "nuvio://meta?type=" + e.type + "&id=" + nid
+    let linkUrl = isStremio ? (im != "" ? stremioUrl : "") : isNuvio ? (nid != "" ? nuvioUrl : "") : ""
+    let playUrl = isToday && playerPkg != "" ? linkUrl : ""
+    let openApp = isToday && playerPkg != "" && playUrl == ""
     Row {
       gap: 10
       align: center
@@ -457,6 +533,34 @@ echo ok
           Text { text: e.fin; style: label; color: yellow }
         }
       }
+      if playUrl != "" {
+        Button { text: "play"; onTap: url(playUrl) }
+      } else {
+        if openApp {
+          Button { text: "play"; onTap: androidApp(playerPkg) }
+        }
+      }
+    }
+  }
+
+  component AppRow(a) {
+    let picked = a.package == playerPkg
+    Row {
+      gap: 10
+      align: center
+      padding: 8
+      radius: 8 * corners
+      background: picked ? surface : background
+      border: 1
+      borderColor: picked ? accent : border
+      onTap: player = a.package
+      Image { src: a.icon; size: 28 }
+      Column {
+        gap: 0
+        weight: 1
+        Text { text: (a.name ?? a.package) + (picked ? " · chosen" : ""); color: picked ? accent : foreground; maxLines: 1 }
+        Text { text: a.package; style: small; color: muted; maxLines: 1 }
+      }
     }
   }
 
@@ -464,18 +568,22 @@ echo ok
     if logged {
       Row {
         align: center
-        Text { text: "upcoming"; style: muted; weight: 1 }
+        Text { text: user == "" ? "upcoming" : user + "'s upcoming"; style: muted; weight: 1 }
         Button { text: "refresh"; onTap: refresh() }
         Button { text: "all ›"; onTap: screen() }
       }
-      if loading {
-        Text { text: "loading…"; style: small; color: muted }
-      } else {
-        if len(items) == 0 {
-          Text { text: "nothing in the next 7 days"; style: small; color: muted }
-        }
-        for e in items.take(3) key e.t {
-          Show { e: e }
+      Column {
+        scroll: true
+        weight: 1
+        if loading {
+          Text { text: "loading…"; style: small; color: muted }
+        } else {
+          if len(items) == 0 {
+            Text { text: "nothing in the next 7 days"; style: small; color: muted }
+          }
+          for e in items key e.t {
+            Show { e: e }
+          }
         }
       }
     } else {
@@ -500,39 +608,82 @@ echo ok
   }
 
   screen {
-    title: "simkl · upcoming"
+    title: screenView == "settings" ? "simkl · settings" : (user == "" ? "simkl · upcoming" : user + " · upcoming")
     Column {
       scroll: true
       gap: 10
-      if logged {
-        if loading {
-          Text { text: "loading…"; style: muted }
-        } else {
-          if len(items) == 0 {
-            Text { text: "nothing in the next 7 days"; style: muted }
+      Row {
+        gap: 8
+        align: center
+        Button { text: "upcoming"; onTap: screenView = "upcoming" }
+        Button { text: "settings"; onTap: screenView = "settings" }
+        Spacer { weight: 1 }
+        Button { text: "close"; onTap: close() }
+      }
+      if screenView == "settings" {
+        Text { text: "player"; style: title }
+        Text { text: "The play button opens today's releases in this app. Stremio opens the exact episode, Nuvio the show page, and any other app is just opened. Type to search all installed apps."; style: small; color: muted }
+        Row {
+          gap: 8
+          align: center
+          if playerPkg != "" {
+            Image { src: "app:${playerPkg}"; size: 24 }
           }
-          for e in items key e.t {
-            Show { e: e }
+          Text { text: player == "" ? (playerPkg == "" ? "auto · none — pick one below" : "auto · " + playerPkg) : playerPkg; weight: 1; maxLines: 1 }
+          if player != "" {
+            Button { text: "auto"; onTap: player = "" }
+          }
+        }
+        Input { text: appQuery; placeholder: "search all apps…"; onChange: appQuery = value }
+        let q = lower(trim(appQuery))
+        let matches = q == "" ? appsList.filter(a => knownPlayers.any(p => p == a.package)) : appsList.filter(a => contains(lower(a.name ?? ""), q) || contains(lower(a.package ?? ""), q))
+        if len(appsList) == 0 {
+          Text { text: "reading installed apps…"; style: small; color: muted }
+        } else {
+          if len(matches) == 0 {
+            Text { text: q == "" ? "no player apps found — type to search all apps" : "no app matches “${appQuery}”"; style: small; color: muted }
+          }
+          for a in matches.take(24) {
+            AppRow { a: a }
+          }
+          if len(matches) > 24 {
+            Text { text: "showing 24 of ${len(matches)}; type to narrow"; style: small; color: muted }
           }
         }
         Spacer { size: 6 }
-        Button { text: "sign out"; onTap: { run("python3 ~/.cache/omalauncher-simkl/simkl.py logout"); refresh() } }
+        if logged {
+          Button { text: "sign out"; onTap: { run("python3 ~/.cache/omalauncher-simkl/simkl.py logout"); refresh() } }
+        }
       } else {
-        Text { text: "Connect your Simkl account"; style: title }
-        if code != "" {
-          Text { text: "Open simkl.com/pin and enter this code:"; style: small; color: muted }
-          Text { text: code; style: huge; color: accent }
-          Row {
-            gap: 8
-            Button { text: "open in browser"; onTap: url(pinUrl) }
-            Button { text: "refresh"; onTap: run("python3 ~/.cache/omalauncher-simkl/simkl.py check ${sh(clientId)}") }
+        if logged {
+          if loading {
+            Text { text: "loading…"; style: muted }
+          } else {
+            if len(items) == 0 {
+              Text { text: "nothing in the next 7 days"; style: muted }
+            }
+            for e in items key e.t {
+              Show { e: e }
+            }
           }
-          Text { text: "This screen updates by itself once you approve."; style: label; color: muted }
+          Spacer { size: 6 }
+          Button { text: "sign out"; onTap: { run("python3 ~/.cache/omalauncher-simkl/simkl.py logout"); refresh() } }
         } else {
-          Button { text: "login with Simkl"; onTap: run("setsid python3 ~/.cache/omalauncher-simkl/simkl.py device-start ${sh(clientId)} >/dev/null 2>&1 &") }
+          Text { text: "Connect your Simkl account"; style: title }
+          if code != "" {
+            Text { text: "Open simkl.com/pin and enter this code:"; style: small; color: muted }
+            Text { text: code; style: huge; color: accent }
+            Row {
+              gap: 8
+              Button { text: "open in browser"; onTap: url(pinUrl) }
+              Button { text: "refresh"; onTap: run("python3 ~/.cache/omalauncher-simkl/simkl.py check ${sh(clientId)}") }
+            }
+            Text { text: "This screen updates by itself once you approve."; style: label; color: muted }
+          } else {
+            Button { text: "login with Simkl"; onTap: run("setsid python3 ~/.cache/omalauncher-simkl/simkl.py device-start ${sh(clientId)} >/dev/null 2>&1 &") }
+          }
         }
       }
-      Button { text: "close"; onTap: close() }
     }
   }
 }
