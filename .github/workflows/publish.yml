@@ -29,6 +29,17 @@ jobs:
         with:
           distribution: temurin
           java-version: 21
+      - name: Order
+        # A new order for every push: the ids order.txt lists keep their place, and every other
+        # widget and app goes before its "..." in a shuffled order, so the middle of "all" isn't
+        # alphabetical. Seeded by the commit, so re-running a push publishes the same order.
+        run: |
+          listed=$(sed 's/#.*//; s/[[:space:]]//g; /^$/d' order.txt)
+          rest=$(ls -d widgets/*/*/ apps/*/*/ | cut -d/ -f2,3 | grep -vxF -f <(echo "$listed") \
+            | shuf --random-source=<(openssl enc -aes-256-ctr -pass pass:"$GITHUB_SHA" -nosalt </dev/zero 2>/dev/null))
+          grep -qx '\.\.\.' order.txt || echo ... >> order.txt
+          { sed '/^\.\.\.$/,$d' order.txt; echo "$rest"; sed -n '/^\.\.\.$/,$p' order.txt; } > order.tmp
+          mv order.tmp order.txt
       - name: Catalog
         run: |
           java -jar tools/owl.jar index .
