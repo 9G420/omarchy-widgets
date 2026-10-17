@@ -1,4 +1,4 @@
-# The order of the store: these widget ids first, in this order; the rest by name;
+# The order of the store: these ids first, in this order; the rest shuffled anew on every push;
 # the ids after "..." last. CI applies it when it builds index.json, and apps.json for apps.
 simonschubert/hn
 simonschubert/climbing
